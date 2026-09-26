@@ -11,4 +11,4 @@ All `README`s are guaranteed organic, pasture-raised human writing.
 
 Command-Tab between windows and tabs on macOS.
 
-[Download](https://github.com/evanbunnage/good-vibes/releases/download/coolswitch-latest/CoolSwitch.zip) · [Read more](coolswitch/)
+[Download](https://github.com/evanbunnage/good-vibes/releases/download/coolswitch-latest/CoolSwitch.zip) · [README](coolswitch/)
