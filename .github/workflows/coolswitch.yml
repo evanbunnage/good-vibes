@@ -6,13 +6,23 @@ name: CoolSwitch
 on:
   push:
     branches: [main]
-    paths: ['coolswitch/**', '.github/workflows/coolswitch.yml']
+    paths:
+      [
+        "coolswitch/**",
+        "!coolswitch/**/*.md",
+        ".github/workflows/coolswitch.yml",
+      ]
   pull_request:
-    paths: ['coolswitch/**', '.github/workflows/coolswitch.yml']
+    paths:
+      [
+        "coolswitch/**",
+        "!coolswitch/**/*.md",
+        ".github/workflows/coolswitch.yml",
+      ]
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (for example, 0.1.1)'
+        description: "Version to release (for example, 0.1.1)"
         required: true
         type: string
 
