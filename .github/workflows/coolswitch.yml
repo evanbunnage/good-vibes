@@ -1,0 +1,144 @@
+name: CoolSwitch
+
+# Pushes and pull requests that touch CoolSwitch run the tests. Running this
+# workflow by hand with a version runs the tests, then signs, notarizes, and
+# publishes that version.
+on:
+  push:
+    branches: [main]
+    paths: ['coolswitch/**', '.github/workflows/coolswitch.yml']
+  pull_request:
+    paths: ['coolswitch/**', '.github/workflows/coolswitch.yml']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (for example, 0.1.1)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: coolswitch
+
+env:
+  DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
+jobs:
+  test:
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - name: Test
+        run: xcrun --sdk macosx swift test
+      - name: Build app
+        run: SIGNING_IDENTITY=- ./scripts/build-app.sh
+
+  release:
+    if: github.event_name == 'workflow_dispatch'
+    needs: test
+    runs-on: macos-26
+    timeout-minutes: 35
+    permissions:
+      contents: write
+    concurrency:
+      group: coolswitch-release
+      cancel-in-progress: false
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$GITHUB_REF" == refs/heads/main ]] || { echo 'Run releases from main.'; exit 1; }
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Use MAJOR.MINOR.PATCH.'; exit 1; }
+          existing=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/coolswitch-v$VERSION" --jq '.[].ref')
+          if grep -Fxq "refs/tags/coolswitch-v$VERSION" <<< "$existing"; then
+            echo 'That version already exists. Choose a new version.'
+            exit 1
+          fi
+
+      - name: Set up signing
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for name in CERTIFICATE_BASE64 CERTIFICATE_PASSWORD APPLE_ID APPLE_APP_PASSWORD APPLE_TEAM_ID; do
+            [[ -n "${!name}" ]] || { echo "Missing GitHub secret: $name"; exit 1; }
+          done
+          umask 077
+          keychain="$RUNNER_TEMP/coolswitch.keychain-db"
+          password=$(openssl rand -hex 24)
+          echo "::add-mask::$password"
+          printf '%s' "$CERTIFICATE_BASE64" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/signing.p12" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -k "$password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain"
+          rm "$RUNNER_TEMP/signing.p12"
+          identity=$(security find-identity -v -p codesigning "$keychain" | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p')
+          [[ -n "$identity" && "$identity" != *$'\n'* ]] || { echo 'Export exactly one Developer ID Application identity.'; exit 1; }
+          echo "SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
+          xcrun notarytool store-credentials coolswitch --keychain "$keychain" \
+            --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID"
+
+      - name: Build and sign universal app
+        run: |
+          ./scripts/build-app.sh --release "$VERSION"
+          architectures=" $(lipo -archs "dist/CoolSwitch.app/Contents/MacOS/coolswitch") "
+          [[ "$architectures" == *' arm64 '* && "$architectures" == *' x86_64 '* ]]
+
+      - name: Notarize and package
+        run: |
+          output="dist"
+          app="$output/CoolSwitch.app"
+          ditto -c -k --keepParent "$app" "$RUNNER_TEMP/upload.zip"
+          submission_exit=0
+          xcrun notarytool submit "$RUNNER_TEMP/upload.zip" --keychain-profile coolswitch \
+            --keychain "$RUNNER_TEMP/coolswitch.keychain-db" --wait --timeout 20m \
+            --output-format json > "$output/submission.json" || submission_exit=$?
+          cat "$output/submission.json"
+          if [[ "$submission_exit" -ne 0 || $(plutil -extract status raw -o - "$output/submission.json") != Accepted ]]; then
+            id=$(plutil -extract id raw -o - "$output/submission.json")
+            xcrun notarytool log "$id" --keychain-profile coolswitch \
+              --keychain "$RUNNER_TEMP/coolswitch.keychain-db" "$output/notarization-log.json"
+            cat "$output/notarization-log.json"
+            exit 1
+          fi
+          xcrun stapler staple "$app"
+          xcrun stapler validate "$app"
+          codesign --verify --strict "$app"
+          spctl --assess --type execute --verbose=2 "$app"
+          ditto -c -k --keepParent "$app" "$output/CoolSwitch.zip"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "coolswitch-v$VERSION" dist/CoolSwitch.zip \
+            --target "$GITHUB_SHA" --title "CoolSwitch $VERSION" --generate-notes --latest=false
+          # Other projects share this repo's releases, so GitHub's "latest" isn't ours.
+          # Keep a fixed release whose download link always serves the newest CoolSwitch.
+          gh release delete coolswitch-latest --cleanup-tag --yes 2>/dev/null || true
+          gh release create coolswitch-latest dist/CoolSwitch.zip --target "$GITHUB_SHA" --latest=false \
+            --title "CoolSwitch $VERSION" --notes "The newest CoolSwitch. This release is replaced each time CoolSwitch ships; see coolswitch-v$VERSION for its notes."
+          echo "[Download CoolSwitch $VERSION](https://github.com/$GITHUB_REPOSITORY/releases/tag/coolswitch-v$VERSION)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Clean up signing
+        if: always()
+        run: |
+          if [[ -f "$RUNNER_TEMP/coolswitch.keychain-db" ]]; then
+            security delete-keychain "$RUNNER_TEMP/coolswitch.keychain-db"
+          fi
+          rm -f "$RUNNER_TEMP/signing.p12"
