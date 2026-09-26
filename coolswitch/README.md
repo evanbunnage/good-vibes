@@ -61,7 +61,9 @@ gh workflow run coolswitch.yml --repo evanbunnage/good-vibes --ref main -f versi
 
 ## Acknowledgments
 - [AltTab](https://github.com/lwouis/alt-tab-macos) for paving the way
-- [permiso](https://github.com/zats/permiso) for the nice Codex-like onboarding
+- Codex macOS team for the nice [onboarding inspo](https://x.com/trpfsu/status/2044882275100250444) 
+- [permiso](https://github.com/zats/permiso) for reverse engineering Codex-y onboarding
+
 
 ## License
 
