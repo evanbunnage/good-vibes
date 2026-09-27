@@ -37,5 +37,5 @@
   ],
   // Only there: sign-in works on one address, so the workers.dev one is off.
   "workers_dev": false,
-  "preview_urls": true
+  "preview_urls": false
 }
