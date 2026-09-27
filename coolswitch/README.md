@@ -1,8 +1,10 @@
-<img src="packaging/icon-preview.png" width="96" alt="">
+<div align="center">
 
-# CoolSwitch
+# <picture><source media="(prefers-color-scheme: dark)" srcset="packaging/logo-dark.svg"><img src="packaging/logo-light.svg" height="72" alt="CoolSwitch"></picture>
 
-Command-Tab between windows on macOS. Supports apps that use native tabs like [Ghostty](https://ghostty.org).
+Command-Tab between windows (not apps) on macOS. Supports apps that use native tabs like [Ghostty](https://ghostty.org).
+
+</div>
 
 ## How is this different from AltTab?
 

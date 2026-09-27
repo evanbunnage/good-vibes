@@ -3,7 +3,9 @@
 # requires-python = ">=3.9"
 # dependencies = ["pillow"]
 # ///
-"""Regenerates AppIcon.icns and icon-preview.png. Run: uv run packaging/make-icon.py"""
+"""Regenerates AppIcon.icns, icon-preview.png, and the README logos. Run: uv run packaging/make-icon.py"""
+import base64
+import io
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter
 
@@ -139,4 +141,37 @@ image.save(
 image.resize((256, 256), Image.LANCZOS).save(
     Path(__file__).with_name("icon-preview.png")
 )
+
+
+def logo(ink):
+    """The icon and its name in the title-bar glyphs, as one SVG for READMEs: the
+    icon 32 units tall (no macOS margin), each glyph pixel 3 units, so it's sharp
+    at 32px. Laid out like SkeinFiend's logo, so the two sit together."""
+    inset = (S - 824) // 2
+    body = image.crop((inset, inset, S - inset, S - inset)).resize((128, 128), Image.LANCZOS)
+    png = io.BytesIO()
+    body.save(png, format="PNG", optimize=True)
+    px, x, top = 3, 43, 5
+    rects = []
+    for letter in TITLE:
+        for row, bits in enumerate(GLYPHS[letter]):
+            col = 0
+            while col < len(bits):
+                if bits[col] == "#":
+                    run = len(bits[col:]) - len(bits[col:].lstrip("#"))
+                    rects.append(f"M{x + col * px} {top + row * px}h{run * px}v{px}h{-run * px}z")
+                    col += run
+                else:
+                    col += 1
+        x += (len(GLYPHS[letter][0]) + 1) * px
+    width = x - px
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} 32" width="{width * 3}" height="96" role="img" aria-label="{TITLE}">'
+        f'<image width="32" height="32" href="data:image/png;base64,{base64.b64encode(png.getvalue()).decode()}"/>'
+        f'<path fill="{ink}" shape-rendering="crispEdges" d="{"".join(rects)}"/></svg>\n'
+    )
+
+
+for name, ink in (("light", "#232723"), ("dark", "#f6f1ea")):
+    Path(__file__).with_name(f"logo-{name}.svg").write_text(logo(ink))
 print("wrote", out)
