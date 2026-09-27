@@ -1,0 +1,64 @@
+.page {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-block-size: 100dvh;
+  padding-inline: max(1.25rem, env(safe-area-inset-left));
+  background: var(--canvas, var(--surface));
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  inline-size: min(64rem, 100%);
+  margin-inline: auto;
+  padding-block: 1.1rem;
+}
+
+.brand { display: inline-flex; align-items: center; gap: 0.6rem; }
+.who { color: var(--ink-muted); font-size: 0.9375rem; }
+
+/* One idea, and two ways in. */
+.hero {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 1.1rem;
+  /* The same column as the header, so everything starts on the logo's left edge. */
+  inline-size: min(64rem, 100%);
+  margin-inline: auto;
+  padding-block: 3rem 6rem;
+
+  & h1 { max-inline-size: 16ch; font-size: clamp(2rem, 6vw, 3.1rem); line-height: 1.08; text-wrap: balance; }
+  & p { max-inline-size: 34rem; color: var(--ink-muted); font-size: 1.0625rem; line-height: 1.5; }
+}
+
+.actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-block-start: 0.4rem; }
+
+.continue {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-block-start: 0.6rem;
+  color: var(--ink-muted);
+  font-size: 0.9375rem;
+  text-decoration: none;
+
+  &:hover { color: var(--accent); }
+  &:hover .thumb { border-color: var(--line-strong); }
+}
+
+.continueText { text-decoration: underline; text-underline-offset: 3px; }
+
+.thumb {
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  inline-size: 3.5rem;
+  block-size: 3.5rem;
+  padding: 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--surface-sunken);
+  transition: border-color 120ms var(--ease);
+}

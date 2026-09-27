@@ -1,0 +1,100 @@
+@layer reset, tokens, base;
+
+@layer reset {
+  *, *::before, *::after { box-sizing: border-box; }
+  * { margin: 0; }
+  html { -webkit-text-size-adjust: none; text-size-adjust: none; }
+  body { min-block-size: 100dvh; -webkit-font-smoothing: antialiased; }
+  img, svg, canvas { display: block; max-inline-size: 100%; }
+  input, button, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :where(h1, h2, h3, p) { overflow-wrap: break-word; }
+}
+
+@layer tokens {
+  :root {
+    color-scheme: light;
+
+    /* Clean off-white for everything around the work; the work itself sits on
+       knitter's green graph paper. The yarn colors carry the warmth. */
+    --paper: #f6f6f3;
+    --surface: #fdfdfb;
+    --surface-sunken: #f0f1ed;
+    --ink: #232723;
+    --ink-muted: #5d635d;
+    --ink-faint: #979c96;
+    --line: #e5e6e1;
+    --line-strong: #cdd0c8;
+    /* A deep forest green, one family with the graph paper, for what's active or
+       chosen; a warm tangerine, against it, for what needs fixing. */
+    --accent: #2f6b4a;
+    --accent-ink: #f6fbf7;
+    --accent-soft: #e3efe7;
+    --accent-rgb: 47 107 74;
+    --warning: #e0601a;
+    --warning-soft: #fde6d6;
+    --focus: #2f6b4a;
+    /* The logo's deep madder, for the one main action on a screen. */
+    --primary: #7e2419;
+    --primary-ink: #f6f1ea;
+
+    --chart-canvas: #f4f8f2;
+    /* Clearly not fabric: a deeper green than the paper, so the piece's edge reads. */
+    --chart-outside: #e3ecdf;
+    --chart-grid: rgb(46 110 70 / 0.11);
+    --chart-grid-major: rgb(36 96 58 / 0.28);
+    --chart-text: var(--ink-muted);
+    /* The graph paper itself, ruled every 5 and 25 pixels, behind drawings. */
+    --graph-paper:
+      linear-gradient(rgb(46 110 70 / 0.13) 1px, transparent 1px) 0 0 / 100% 25px,
+      linear-gradient(90deg, rgb(46 110 70 / 0.13) 1px, transparent 1px) 0 0 / 25px 100%,
+      linear-gradient(rgb(46 110 70 / 0.055) 1px, transparent 1px) 0 0 / 100% 5px,
+      linear-gradient(90deg, rgb(46 110 70 / 0.055) 1px, transparent 1px) 0 0 / 5px 100%,
+      #f4f8f2;
+    --shadow-tint: 30 34 30;
+
+    /* Warm and handmade: soft serif headings, a friendly sans, and wide square numbers that sit like stitches. */
+    --font-ui: 'Figtree', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-display: 'Fraunces', ui-serif, 'Iowan Old Style', Georgia, serif;
+    --font-mono: 'Martian Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    /* Fraunces at its softest, without its quirkier letterforms. */
+    --font-display-settings: 'SOFT' 100, 'WONK' 0;
+
+    --radius-s: 6px;
+    --radius-m: 10px;
+    --radius-l: 16px;
+    --shadow: 0 1px 2px rgb(var(--shadow-tint) / 0.06), 0 8px 24px -12px rgb(var(--shadow-tint) / 0.25);
+    --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --tap: 2.5rem;
+  }
+}
+
+@layer base {
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-size: 0.9375rem;
+    line-height: 1.45;
+  }
+
+  h1, h2, h3 { font-family: var(--font-display); font-variation-settings: var(--font-display-settings); font-weight: 600; letter-spacing: -0.01em; line-height: 1.15; }
+
+  a { color: inherit; }
+
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  ::selection { background: var(--accent-soft); }
+
+  /* While a number field is being scrubbed, keep the cursor and don't select text. */
+  body[data-scrubbing] { cursor: ew-resize; user-select: none; }
+
+  .visually-hidden {
+    position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden;
+    clip-path: inset(50%); white-space: nowrap;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+  }
+}

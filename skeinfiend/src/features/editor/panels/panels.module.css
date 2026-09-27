@@ -1,0 +1,610 @@
+.section {
+  flex: none;
+  border-block-end: 1px solid var(--line);
+
+  /*
+   * In a full panel, the yarns and the colorwork shrink and scroll, each
+   * under its own title, so the stitches below stay on screen.
+   */
+  &[data-scrolls][open] {
+    flex: 0 1 auto;
+    min-block-size: 8rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+  /* The colorwork, which grows longest, gives up its height before the yarns do. */
+  &[data-scrolls='first'][open] { flex-shrink: 1000; }
+  &[data-scrolls] > .summary { position: sticky; inset-block-start: 0; z-index: 1; background: var(--surface); }
+
+  &[open] > .summary::after { rotate: 225deg; translate: 0 25%; }
+
+  /* The last section ends the panel: no line under it. */
+  &:last-child { border-block-end: 0; }
+}
+
+.step {
+  display: grid;
+  place-items: center;
+  flex: none;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-block-size: 3rem;
+  padding: 0.25rem 0.9rem;
+  cursor: pointer;
+  list-style: none;
+
+  &::-webkit-details-marker { display: none; }
+  &::after {
+    content: '';
+    inline-size: 0.55rem;
+    block-size: 0.55rem;
+    border-block-end: 1.8px solid var(--ink-faint);
+    border-inline-end: 1.8px solid var(--ink-faint);
+    translate: 0 -25%;
+    rotate: 45deg;
+    transition: rotate 150ms var(--ease);
+  }
+
+  & h2 { flex: 1; font-family: var(--font-ui); font-size: 0.8125rem; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-muted); }
+}
+
+.summaryAction { display: contents; }
+
+/* A closed section's contents at a glance, beside its title. */
+.collapsed { display: flex; align-items: center; gap: 0.25rem; }
+
+/* A yarn's color, small, in the closed Yarns title. */
+.yarnDot {
+  inline-size: 0.8rem;
+  block-size: 0.8rem;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.15);
+}
+
+.body {
+  display: grid;
+  /* A single column that never grows past the panel, whatever its fields' intrinsic widths. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.85rem;
+  padding: 0 0.9rem 1.1rem;
+}
+
+.row { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+
+.pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+  gap: 0.6rem;
+
+  @container (width < 16rem) { grid-template-columns: 1fr; }
+}
+
+
+/* Yarns */
+
+.yarns { display: grid; gap: 2px; padding: 0; list-style: none; }
+
+.yarnRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 0.1rem;
+  padding-inline-start: 0.5rem;
+  border-radius: var(--radius-m);
+
+  /* As a layer's row: pointed at, then chosen; its actions always showing. */
+  &:hover { background: var(--surface-sunken); }
+  &[data-chosen] { background: var(--accent-soft); }
+  & > button[data-size='icon'] { inline-size: 1.6rem; min-block-size: 1.75rem; color: var(--ink-faint); }
+  /* Lighter than toolbar icons: there's a set on every row. */
+  & > button[data-size='icon'] svg { inline-size: 1rem; block-size: 1rem; stroke-width: 1.4; }
+  & > button[data-size='icon']:hover:not(:disabled) { color: var(--ink); }
+  & > button[data-open] { color: var(--accent); }
+}
+
+.yarn {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.6rem;
+  inline-size: 100%;
+  min-block-size: var(--tap);
+  padding: 0.25rem 0.3rem 0.25rem 0.5rem;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: start;
+}
+
+/* The swatch is the color picker: clicking it opens the system's. */
+.swatch {
+  position: relative;
+  inline-size: 1.6rem;
+  block-size: 1.6rem;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.15);
+  cursor: pointer;
+
+  &:hover { box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.15), 0 0 0 2px var(--surface), 0 0 0 3px var(--line-strong); }
+  &:focus-within { box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.15), 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+  & input { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; opacity: 0; cursor: pointer; }
+}
+
+/* How much a yarn takes. */
+.yarnAmount {
+  padding-inline: 0.35rem 0.15rem;
+  color: var(--ink-faint);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+
+}
+
+/* A yarn's ball band, in its window. */
+.yarnDetails {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  color: var(--ink-muted);
+
+  & > label, & > .yarnDetailsRow {
+    display: grid;
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+    align-items: center;
+    gap: 0.5rem;
+  }
+  & select {
+    min-inline-size: 0;
+    padding: 0.2rem 0.25rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-s);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+  }
+}
+
+.yarnField {
+  min-inline-size: 0;
+  inline-size: 100%;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+
+  &::placeholder { color: var(--ink-faint); }
+  &:focus { outline: none; border-color: var(--accent); }
+}
+
+/* Numbers with their units: "105 m  25 g". */
+.yarnSkein {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  & .yarnField { inline-size: 3.5rem; text-align: end; font-variant-numeric: tabular-nums; }
+}
+
+.yarnNeeds {
+  display: grid;
+  gap: 0.1rem;
+  margin-block-start: 0.35rem;
+  padding-block-start: 0.5rem;
+  border-block-start: 1px solid var(--line);
+  line-height: 1.35;
+  & strong { color: var(--ink); font-weight: 600; }
+  & span { color: var(--ink-faint); font-size: 0.75rem; }
+}
+
+/* Asks for the swatch, quietly, until it's given. */
+.swatchAsk {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  &:hover { text-decoration: underline; }
+}
+
+/* The yarn window's color, before its name: the same picker, smaller. */
+.windowSwatch {
+  composes: swatch;
+  flex: none;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  margin-inline-end: 0.35rem;
+}
+
+.yarnName { display: flex; align-items: center; gap: 0.4rem; font-weight: 500; }
+
+.badge {
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+/* Colorwork layers */
+
+/* A newer version of a layer's library motif, offered: quiet, until it's wanted. */
+.libraryUpdate {
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  cursor: pointer;
+  &:hover { background: var(--accent-soft); }
+}
+
+.layers { display: grid; gap: 2px; padding: 0; list-style: none; }
+
+.layerGroup {
+  border: 1px solid transparent;
+  border-radius: var(--radius-m);
+
+  &[data-selected] { background: var(--accent-soft); }
+  /* While dragging: the layer being moved stays in place, faded and dashed; a line shows where it will land. */
+  &[data-dragging] { opacity: 0.45; border-style: dashed; border-color: var(--line-strong); }
+  &[data-drop='before'] { box-shadow: 0 -2px 0 var(--accent); }
+  &[data-drop='after'] { box-shadow: 0 2px 0 var(--accent); }
+}
+
+.layer {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  padding: 0.25rem 0.3rem;
+  border-radius: var(--radius-m);
+
+  /* The grip, the name, then however many actions the layer has (an Update, when there's one to take). */
+  &[data-grip] { grid-template-columns: auto minmax(0, 1fr); grid-auto-flow: column; grid-auto-columns: auto; }
+  &:hover { background: var(--surface-sunken); }
+  /* Selected, it stays selected-looking when pointed at, as a chosen yarn does. */
+  .layerGroup[data-selected] > &:hover { background: transparent; }
+  /* As a yarn's row: its actions always showing, the open window's pencil in the accent. */
+  & > button[data-size='icon'] { inline-size: 1.6rem; min-block-size: 1.75rem; color: var(--ink-faint); }
+  /* Lighter than toolbar icons: there's a set on every row. */
+  & > button[data-size='icon'] svg { inline-size: 1rem; block-size: 1rem; stroke-width: 1.4; }
+  & > button[data-size='icon']:hover { color: var(--ink); }
+  & > button[data-open] { color: var(--accent); }
+  /* Where an action a layer doesn't have would be, so the others line up. */
+  & > .actionSpace { inline-size: 1.6rem; }
+  .layers > &[data-selected] { background: color-mix(in oklab, var(--accent-soft), transparent 50%); box-shadow: inset 0 0 0 1px var(--accent); }
+}
+
+.grip {
+  display: grid;
+  place-items: center;
+  inline-size: 1.25rem;
+  min-block-size: 2rem;
+  margin-inline-start: -0.2rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--ink-faint);
+  cursor: grab;
+
+  & svg { inline-size: 1rem; block-size: 1rem; stroke-width: 3; }
+  &:hover { color: var(--ink-muted); }
+}
+
+.layerSelect {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+  min-inline-size: 0;
+  min-block-size: 2.25rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-size: 0.875rem;
+  text-align: start;
+  cursor: pointer;
+}
+
+.layerIcon {
+  display: grid;
+  place-items: center;
+  inline-size: 2.75rem;
+  block-size: 1.75rem;
+  border-radius: var(--radius-s);
+  color: var(--ink-muted);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.layerName { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* How the layer repeats, right after its name: faint, a hint rather than a control. */
+.repeatMark {
+  display: inline-grid;
+  justify-self: start;
+  margin-inline-start: -0.3rem;
+  color: var(--ink-faint);
+  & svg { inline-size: 0.95rem; block-size: 0.95rem; }
+}
+
+.layerSelect:has(.repeatMark) { grid-template-columns: auto minmax(0, auto) 1fr; }
+
+.inlineSelect { min-block-size: 2rem; padding-block: 0; font-size: 0.8125rem; }
+
+/* The selected layer's settings */
+
+
+
+
+
+
+
+.motifPreview {
+  /* One definite cell, so a filling preview can size to it. */
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  inline-size: 2.75rem;
+  block-size: 2.75rem;
+  padding: 0.3rem;
+  border-radius: var(--radius-s);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.12);
+}
+
+
+
+
+
+
+
+
+/* A layer's colors: tap one, then a yarn, to recolor it. */
+.chips {
+  display: flex;
+  gap: 0.2rem;
+  padding-inline: 0.25rem;
+
+  /* More than two colors: two rows, filling across. */
+  &[data-grid] { display: grid; grid-template-rows: repeat(2, auto); grid-auto-flow: column; gap: 0.15rem; }
+}
+
+.chipButton {
+  inline-size: 0.7rem;
+  block-size: 0.7rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.25);
+  cursor: pointer;
+
+  &:hover { outline: 2px solid var(--line-strong); outline-offset: 1px; }
+  &[aria-pressed='true'] { outline: 2px solid var(--accent); outline-offset: 2px; }
+}
+
+.recolorPrompt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-block-end: 0.4rem;
+  padding: 0.3rem 0.3rem 0.3rem 0.6rem;
+  border-radius: var(--radius-m);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+/* The yarns are a swatch palette for the color being recolored. */
+.yarns[data-recoloring] .yarnRow:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+
+/* Floats */
+
+.renameInput {
+  min-inline-size: 0;
+  inline-size: 100%;
+  padding: 0.15rem 0.3rem;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+
+
+/* A setting in a panel: its label above its control. */
+.property {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  color: var(--ink-muted);
+}
+
+/* Motifs to add, in one scrolling row above the layers: small tiles to click or drag. */
+/* The motifs, and the arrow that lays them out as a grid. */
+.stripArea {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.2rem;
+}
+
+.strip {
+  display: flex;
+  gap: 0.35rem;
+  margin-inline: -0.1rem;
+  padding: 0.1rem 0.1rem 0.45rem;
+  overflow-x: auto;
+  scrollbar-width: thin;
+
+  /* A grid of them, four rows tall, then scrolling: half the fifth showing, to show there's more. */
+  &[data-expanded] {
+    flex-wrap: wrap;
+    max-block-size: calc(4.5 * 2.6rem + 4 * 0.35rem + 0.1rem);
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+}
+
+.stripToggle {
+  display: grid;
+  place-items: center;
+  inline-size: 1.4rem;
+  block-size: 2.6rem;
+  margin-block-start: 0.1rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--ink-faint);
+  cursor: pointer;
+
+  &:hover { background: var(--surface-sunken); color: var(--ink); }
+  & svg { inline-size: 1rem; block-size: 1rem; stroke-width: 1.6; }
+}
+
+.stripTile {
+  /* One definite cell, so a filling preview can size to it. */
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  place-items: center;
+  flex: none;
+  inline-size: 2.6rem;
+  block-size: 2.6rem;
+  padding: 0.3rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--accent);
+  cursor: grab;
+
+  &:hover { border-color: var(--accent); }
+  &:active { cursor: grabbing; }
+  &[data-new] { border-style: dashed; }
+  & svg { inline-size: 1rem; block-size: 1rem; }
+}
+
+/* The piece: a label, and its setting beside it. */
+.pieceRow {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--ink-muted);
+}
+
+.pieceSize {
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  & a { color: var(--ink); text-decoration-color: var(--line-strong); }
+  & a:hover { color: var(--accent); }
+}
+
+/* The first step, shown once, by the motifs: a tile sliding onto a scrap of chart. */
+.helper {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.65rem;
+  margin-block: 0.1rem 0.5rem;
+  padding: 0.55rem 0.4rem 0.55rem 0.6rem;
+  border-radius: var(--radius-m);
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+
+.helperDemo {
+  position: relative;
+  display: block;
+  inline-size: 4.2rem;
+  block-size: 2.4rem;
+}
+
+/* A scrap of the chart: graph paper in the main color. */
+.helperChart {
+  position: absolute;
+  inset-block: 0.2rem;
+  inset-inline-start: 0;
+  inline-size: 2.2rem;
+  border-radius: 3px;
+  background:
+    linear-gradient(var(--line) 1px, transparent 1px) 0 0 / 0.4rem 0.4rem,
+    linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0 / 0.4rem 0.4rem,
+    #ddc9a3;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.12);
+}
+
+.helperTile {
+  position: absolute;
+  inset-block-start: 0.35rem;
+  inset-inline-end: 0;
+  display: grid;
+  place-items: center;
+  inline-size: 1.7rem;
+  block-size: 1.7rem;
+  padding: 0.2rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  box-shadow: 0 2px 6px -2px rgb(var(--shadow-tint) / 0.35);
+  animation: helper-drag 3.2s var(--ease) infinite;
+
+  & svg { inline-size: 100%; block-size: 100%; fill: #2f332f; }
+}
+
+/* Picked up, carried left onto the chart, set down in its yarn, then back to start again. */
+@keyframes helper-drag {
+  0%, 12% { transform: translateX(0) scale(1); opacity: 1; }
+  20% { transform: translateX(0) scale(1.08); }
+  55%, 70% { transform: translateX(-2.1rem) scale(1.08); opacity: 1; background: var(--surface); }
+  80% { transform: translateX(-2.1rem) scale(1); opacity: 1; background: #ddc9a3; border-color: transparent; box-shadow: none; }
+  92% { transform: translateX(-2.1rem) scale(1); opacity: 0; }
+  93% { transform: translateX(0) scale(1); opacity: 0; }
+  100% { transform: translateX(0) scale(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .helperTile { animation: none; }
+}
+
+.helperClose {
+  display: grid;
+  place-items: center;
+  inline-size: 1.6rem;
+  block-size: 1.6rem;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--ink-muted);
+
+  &:hover { background: rgb(0 0 0 / 0.06); color: var(--ink); }
+  & svg { inline-size: 0.9rem; block-size: 0.9rem; }
+}

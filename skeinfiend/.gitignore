@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.DS_Store
+*.local
+*.tsbuildinfo
+
+# Local state from Wrangler and the TanStack Router plugin
+.wrangler/
+.tanstack/
+
+.env
+.env.*
+!.env.example
+.dev.vars*

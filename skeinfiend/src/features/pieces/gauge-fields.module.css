@@ -1,0 +1,12 @@
+/* One line that reads as the gauge: [28] stitches and [32] rows in [10] cm. */
+.gauge {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.4rem;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+
+  & > :not(span) { flex: none; inline-size: 3rem; }
+  & input { text-align: center; font-variant-numeric: tabular-nums; }
+}

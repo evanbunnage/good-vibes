@@ -1,0 +1,84 @@
+.menu { position: relative; }
+
+/* Charts, in the top bar: snug, so it sits close to the mark and the chart's name. */
+.trigger { gap: 0.2rem; padding-inline: 0.45rem 0.35rem; }
+
+.panel {
+  position: absolute;
+  inset-block-start: calc(100% + 0.4rem);
+  inset-inline-start: 0;
+  z-index: 10;
+  display: grid;
+  gap: 0.6rem;
+  inline-size: min(22rem, calc(100vw - 1.5rem));
+  max-block-size: min(70vh, 34rem);
+  padding: 0.7rem;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  box-shadow: 0 10px 28px -10px rgb(var(--shadow-tint) / 0.35);
+}
+
+.starts { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+
+.list { display: grid; gap: 2px; padding: 0; list-style: none; }
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  border-radius: var(--radius-m);
+
+  &:hover { background: var(--surface-sunken); }
+  &[data-current] { background: var(--accent-soft); }
+  & > button[data-size='icon'] { inline-size: 1.6rem; min-block-size: 1.75rem; color: var(--ink-faint); }
+  & > button[data-size='icon'] svg { inline-size: 1rem; block-size: 1rem; stroke-width: 1.4; }
+  & > button[data-size='icon']:hover { color: var(--ink); }
+}
+
+.open {
+  display: grid;
+  grid-template-columns: 2.4rem minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 0.6rem;
+  align-items: center;
+  padding: 0.35rem 0.4rem;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.thumb {
+  grid-row: span 2;
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  inline-size: 2.4rem;
+  block-size: 2.4rem;
+  padding: 0.2rem;
+  border-radius: var(--radius-s);
+  background: var(--surface-sunken);
+}
+
+.name { overflow: hidden; font-size: 0.875rem; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+.date { color: var(--ink-faint); font-size: 0.75rem; }
+
+/* The account, at the end of the top bar. */
+.account { position: relative; }
+.accountPanel {
+  position: absolute;
+  inset-block-start: calc(100% + 0.4rem);
+  inset-inline-end: 0;
+  z-index: 10;
+  display: grid;
+  gap: 0.5rem;
+  inline-size: max-content;
+  max-inline-size: 18rem;
+  padding: 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  box-shadow: 0 10px 28px -10px rgb(var(--shadow-tint) / 0.35);
+  font-size: 0.8125rem;
+  & p { color: var(--ink-muted); }
+}
+.problem { color: var(--warning); }

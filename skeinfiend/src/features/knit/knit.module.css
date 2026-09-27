@@ -1,0 +1,207 @@
+.page {
+  display: grid;
+  /* As wide as the screen, whatever's in the header: on a phone, the title shortens instead. */
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(12rem, 1fr) auto;
+  block-size: 100dvh;
+  background: var(--chart-canvas);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface);
+}
+
+.title {
+  flex: 1;
+  min-inline-size: 0;
+  font-size: 1.15rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.awake {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-inline-start: auto;
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  cursor: pointer;
+  & input { accent-color: var(--accent); }
+}
+
+/* On a phone the bar under the header says it: the words make room for the title. */
+@media (width < 30rem) { .progressText { display: none; } }
+
+.progressText { color: var(--ink-muted); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+
+.progress {
+  display: block;
+  inline-size: 100%;
+  block-size: 3px;
+  appearance: none;
+  border: 0;
+  background: var(--line);
+
+  &::-webkit-progress-bar { background: var(--line); }
+  &::-webkit-progress-value { background: var(--accent); }
+  &::-moz-progress-bar { background: var(--accent); }
+}
+
+.chart { min-block-size: 0; position: relative; }
+
+/* What's under the pointer: beside it, clear of the hand, never in the way of clicks. */
+.hoverLabel {
+  position: absolute;
+  z-index: 1;
+  translate: 0.9rem 1rem;
+  max-inline-size: min(24rem, 70%);
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  pointer-events: none;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+
+  &[data-flip] { translate: -0.9rem 1rem; }
+}
+
+.row {
+  display: grid;
+  /* The same height whatever the row says, so the chart above never resizes as you knit. */
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  block-size: clamp(14rem, 32dvh, 18rem);
+  gap: 0.9rem;
+  padding: 1rem clamp(1rem, 4vw, 2rem);
+  padding-block-end: max(1rem, env(safe-area-inset-bottom));
+  border-block-start: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.rowHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+
+  & h2 { font-size: 1.6rem; }
+}
+
+/* What the row says: its written line, yarns, and notes. Scrolls when there's more than fits. */
+.rowBody {
+  display: grid;
+  align-content: start;
+  gap: 0.6rem;
+  min-block-size: 0;
+  overflow-y: auto;
+}
+
+.of { color: var(--ink-faint); font-size: 1rem; font-weight: 400; }
+.side { color: var(--ink-muted); font-size: 0.9rem; }
+
+/* The row as patterns write it: one line, in the pattern's own words. */
+.written {
+  font-size: 1.05rem;
+  line-height: 1.55;
+  & strong { font-weight: 650; }
+}
+
+.writtenCount { color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+
+/* The yarns the row names, as the printed key does: MC, CC1… */
+.writtenKey {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+
+  & li { display: inline-flex; align-items: center; gap: 0.35rem; }
+  & strong { color: var(--ink); font-weight: 600; }
+}
+
+.writtenSwatch {
+  inline-size: 0.9rem;
+  block-size: 0.9rem;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.15);
+}
+
+.floatNote {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+  & svg { color: var(--warning); }
+}
+
+.nav {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 0.6rem;
+
+  & button { min-block-size: 3.25rem; font-size: 1rem; }
+}
+
+.next { font-size: 1.1rem !important; }
+
+.afterNote {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+
+/* The same dashed outline as the stitched-on motifs on the chart. */
+.stitchOnMark {
+  flex: none;
+  inline-size: 0.85rem;
+  block-size: 0.85rem;
+  border: 1.5px dashed var(--accent);
+  border-radius: 2px;
+}
+
+.stitchOn {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0;
+  list-style: none;
+
+  & button {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: baseline;
+    gap: 0.75rem;
+    inline-size: 100%;
+    padding: 0.7rem 0.85rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-m);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 0.95rem;
+    text-align: start;
+
+    &:hover { background: var(--surface-sunken); }
+    &[aria-pressed='true'] { border-color: var(--accent); }
+  }
+  & span { color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+}
+
+.show { color: var(--accent) !important; font-size: 0.8125rem; }

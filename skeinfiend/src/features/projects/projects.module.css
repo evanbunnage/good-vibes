@@ -1,0 +1,223 @@
+.page {
+  inline-size: min(72rem, 100%);
+  margin-inline: auto;
+  padding: clamp(1rem, 4vw, 2.5rem);
+  padding-block-end: 4rem;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-block-end: 2rem;
+}
+
+/* The motif library */
+
+.library { display: grid; gap: 1rem; margin-block-start: 3rem; }
+.libraryHead { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.library h2 { font-size: 1.15rem; }
+.libraryHeading { margin-block-start: 1.5rem; }
+.libraryEmpty { color: var(--ink-muted); }
+
+.motifGridList {
+  display: grid;
+  /* Two across on a phone, more as there's room. */
+  grid-template-columns: repeat(auto-fill, minmax(min(11rem, calc(50% - 0.5rem)), 1fr));
+  gap: 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.motifCard {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.75rem 0.75rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+
+  & .cardActions { padding: 0.3rem 0 0; }
+  & .cardDate a { color: var(--ink-muted); }
+  & .cardDate a:hover { color: var(--accent); }
+}
+
+/* A classic's whole card opens it. */
+.motifCard[data-opens] { padding-block-end: 0.75rem; cursor: pointer; }
+.motifCard[data-opens]:hover { border-color: var(--line-strong); box-shadow: var(--shadow); }
+.motifOpen {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.motifThumb {
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  aspect-ratio: 1;
+  margin-block-end: 0.5rem;
+  padding: 1rem;
+  border-radius: var(--radius-m);
+  background: var(--surface-sunken);
+}
+
+.motifEditor { inline-size: min(28rem, calc(100vw - 2rem)); max-block-size: calc(100dvh - 2rem); }
+.motifField { display: grid; gap: 0.3rem; font-size: 0.8125rem; color: var(--ink-muted); }
+.motifName {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9375rem;
+  &:focus { outline: none; border-color: var(--accent); }
+}
+.motifSize { display: flex; flex-wrap: wrap; gap: 1rem; }
+.slots { display: flex; gap: 0.4rem; }
+.slot {
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  cursor: pointer;
+  &[aria-checked='true'] { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* Clear: no stitch, shown as a crossed-out empty swatch. */
+  &[data-clear] { background: linear-gradient(135deg, transparent 46%, var(--ink-faint) 46% 54%, transparent 54%) var(--surface) !important; }
+}
+.motifUse {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  & select {
+    flex: 1 1 10rem;
+    min-inline-size: 0;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-s);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+  }
+}
+
+.motifGrid {
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 0.5rem;
+  border-radius: var(--radius-m);
+  background: var(--surface-sunken);
+  & canvas { touch-action: none; cursor: crosshair; background: var(--surface); }
+}
+
+.who { color: var(--ink-muted); font-size: 0.875rem; }
+.signOutProblem { margin-block: -1rem 1.5rem; color: var(--warning); font-size: 0.875rem; }
+
+.headerActions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.4rem; min-inline-size: 0; }
+
+.empty {
+  display: grid;
+  gap: 1rem;
+  justify-items: start;
+  padding-block: clamp(2rem, 10vh, 6rem);
+
+  /* One line where there's room; on a phone it wraps rather than overflow. */
+  & h2 { font-size: clamp(1.8rem, 5vw, 2.6rem); text-wrap: balance; }
+  @media (width >= 44rem) { & h2 { white-space: nowrap; } }
+}
+
+.emptyActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-block-start: 0.5rem;
+}
+
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 1.25rem;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  display: grid;
+  grid-template-rows: auto auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  overflow: hidden;
+  transition: border-color 150ms var(--ease), box-shadow 150ms var(--ease);
+
+  &:hover, &:focus-within { border-color: var(--line-strong); box-shadow: var(--shadow); }
+}
+
+.cardLink {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.9rem 0.9rem 0.25rem;
+  text-decoration: none;
+}
+
+.thumbnail {
+  /* One definite cell, so the preview can fill it. */
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  aspect-ratio: 4 / 3;
+  margin-block-end: 0.6rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-m);
+  background: var(--surface-sunken);
+}
+
+.cardName { font-weight: 600; }
+.cardDate { color: var(--ink-muted); font-size: 0.8125rem; }
+
+.cardActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  padding: 0 0.4rem 0.4rem;
+}
+
+.confirm {
+  margin-inline-end: auto;
+  padding-inline-start: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--ink-muted);
+}
+
+.example { margin-inline-end: auto; }
+
+.newProject {
+  inline-size: min(26rem, calc(100vw - 2rem));
+  max-block-size: calc(100dvh - 2rem);
+}
+
+.gauge {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0;
+  border: 0;
+
+  & legend { margin-block-end: 0.4rem; color: var(--ink); font-size: 0.9375rem; font-weight: 600; }
+}
+
+.sizeNote {
+  font-size: 0.875rem;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
