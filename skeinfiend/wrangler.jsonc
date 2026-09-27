@@ -5,21 +5,37 @@
   "main": "./worker/index.ts",
   "compatibility_date": "2026-09-20",
   // pg needs Node's APIs (sockets, crypto), which Workers provide with this flag.
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "assets": {
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": [
+      "/api/*"
+    ]
   },
   // Cloudflare's pooled connection to PlanetScale (made by the PlanetScale integration; caching off, so
   // sign-in never reads a stale session). Locally, it connects with
   // CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE from .env instead.
-  "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "eb9594cb8aaf43baa4ce9f744c2d36b8" }],
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "eb9594cb8aaf43baa4ce9f744c2d36b8"
+    }
+  ],
   // Where it's served: sign-in cookies and password reset links are made for this address.
   // Locally, BETTER_AUTH_URL in .env (the dev server's address) takes its place.
-  "vars": { "BETTER_AUTH_URL": "https://skeinfiend.com" },
+  "vars": {
+    "BETTER_AUTH_URL": "https://skeinfiend.com"
+  },
   // Its own address, on Cloudflare: deploying keeps the domain pointed here.
-  "routes": [{ "pattern": "skeinfiend.com", "custom_domain": true }],
+  "routes": [
+    {
+      "pattern": "skeinfiend.com",
+      "custom_domain": true
+    }
+  ],
   // Only there: sign-in works on one address, so the workers.dev one is off.
   "workers_dev": false,
-  "preview_urls": false
+  "preview_urls": true
 }
