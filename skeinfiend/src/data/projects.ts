@@ -1,7 +1,7 @@
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { createContext, useContext } from 'react'
 import type { Project } from '@/domain/project'
-import { ChartConflictError, ChartGoneError } from './remote-repository'
+import { ChartConflictError, ChartGoneError, NotSignedInError } from './remote-repository'
 import { summarize, type ProjectRepository, type ProjectSummary } from './repository'
 
 export const RepositoryContext = createContext<ProjectRepository | null>(null)
@@ -74,10 +74,11 @@ export function useSaveProject() {
     scope: { id: 'save-chart' },
     mutationFn: (project: Project) => repository.put(project),
     // Offline, saves wait (TanStack Query pauses them) and go when the connection's back. A failure
-    // is tried again, less often each time, until it goes through; not someone else's newer save,
-    // or a deleted chart, which the editor deals with.
+    // is tried again, less often each time, until it goes through (signed out, once they sign back in);
+    // not someone else's newer save, or a deleted chart, which the editor deals with.
     retry: (_count, error) => !(error instanceof ChartConflictError || error instanceof ChartGoneError),
-    retryDelay: (attempt) => Math.min(30_000, 1000 * 2 ** attempt),
+    // Signed out, tried every few seconds, so it goes soon after they sign back in.
+    retryDelay: (attempt, error) => (error instanceof NotSignedInError ? 3000 : Math.min(30_000, 1000 * 2 ** attempt)),
     onMutate: async (project) => {
       await client.cancelQueries({ queryKey: projectKeys.list() })
       const previousList = client.getQueryData<ProjectSummary[]>(projectKeys.list())
@@ -124,6 +125,15 @@ export function duplicate(source: Project, id: string, now: number): Project {
  * or waiting for the connection.
  */
 export function hasUnsavedCharts(client: QueryClient): boolean {
+  return [...unsaved(client).values()].some(Boolean)
+}
+
+/** Whether this chart's latest changes are still to be saved: then the cached copy is newer than the account's. */
+export function hasUnsavedChart(client: QueryClient, id: string): boolean {
+  return unsaved(client).get(id) === true
+}
+
+function unsaved(client: QueryClient): Map<string, boolean> {
   const latest = new Map<string, boolean>()
   for (const mutation of client.getMutationCache().findAll({ mutationKey: SAVE_MUTATION_KEY })) {
     const project = mutation.state.variables as Project | undefined
@@ -132,5 +142,5 @@ export function hasUnsavedCharts(client: QueryClient): boolean {
     const handled = error instanceof ChartConflictError || error instanceof ChartGoneError
     if (project) latest.set(project.id, status !== 'success' && !handled)
   }
-  return [...latest.values()].some(Boolean)
+  return latest
 }

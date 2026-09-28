@@ -57,6 +57,11 @@
   &:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 }
 
+/* Left out on the narrowest phones, so the chart's name has room: Knit is its icon, and "Sign in to save" is "Sign in". */
+.roomyOnly { @media (width < 24rem) { display: none; } }
+
+.phoneLogo { display: grid; place-items: center; flex: none; }
+
 .name {
   /* As wide as the name (up to a limit), so what follows sits right after it. */
   field-sizing: content;
@@ -84,6 +89,8 @@
   white-space: nowrap;
   /* On a phone the account's Sign in, beside it, says the same: this one gives way, for the chart's name and Knit. */
   &[data-sign-in] { @media (width < 44rem) { display: none; } }
+  /* The session's over: the account menu doesn't say so, so this stays, even on a phone. */
+  &[data-signed-out] { flex-shrink: 0; }
   & a { color: var(--accent); }
   & a:hover { text-decoration: underline; }
   /* Its words and the widest of them, stacked: it's as wide as the widest. */
@@ -221,15 +228,6 @@
 }
 
 /* On a phone, in place of the editing panels. */
-.phoneNote {
-  display: grid;
-  gap: 0.75rem;
-  padding: 1rem 0.9rem;
-  border-block-end: 1px solid var(--line);
-  color: var(--ink-muted);
-  font-size: 0.875rem;
-}
-
 .status {
   display: flex;
   align-items: center;
@@ -470,6 +468,24 @@
 .sizingLeader { fill: none; stroke: var(--line-strong); stroke-width: 1; }
 
 .sizingName { font-weight: 600; }
+.sizingNameText { pointer-events: all; cursor: text; &:hover { text-decoration: underline; } }
+.sizingNameInput {
+  inline-size: 100%;
+  block-size: 100%;
+  padding: 0 0.25rem;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--surface);
+  font: inherit;
+  font-weight: 600;
+}
+
+/* The width a press would add, where the pointer is. */
+.sizingPreview {
+  fill: var(--accent);
+  font-weight: 600;
+  & line { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 3; }
+}
 
 /* A width's length on the piece, over its faded stitches. */
 .sizingAcross { font-weight: 600; }

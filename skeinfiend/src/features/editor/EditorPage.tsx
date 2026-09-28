@@ -2,6 +2,7 @@ import { useMutationState } from '@tanstack/react-query'
 import { Link, useNavigate, useRouteContext, useSearch } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { SAVE_MUTATION_KEY } from '@/data/projects'
+import { NotSignedInError } from '@/data/remote-repository'
 import { rename, sizeIndex, switchSize } from '@/domain/edits'
 import { cellAspect, CM_PER_INCH, formatLength, heightCm, rowsPerCm, stitchesPerCm, widthCm } from '@/domain/gauge'
 import type { RowIssue } from '@/domain/floats'
@@ -35,8 +36,9 @@ import { yarnWindow } from './yarn-window'
 import { layerWindow, motifPreview } from './layer-window'
 import { YarnsSection } from './panels/YarnsSection'
 import { PieceSection } from './panels/PieceSection'
-import { SIZING_MARGINS, SizingOverlay } from './SizingOverlay'
+import { SIZING_MARGINS, SizingOverlay, type SizingPress } from './SizingOverlay'
 import styles from './editor.module.css'
+import { isReturning } from '@/data/auth'
 
 const selectSizing = (s: EditorState) => s.showingSizing
 const selectStitchesShown = (s: EditorState) => s.showingStitches
@@ -82,7 +84,6 @@ export function EditorPage() {
       <aside className={styles.panel} aria-label="Colorwork settings">
         {phone ? (
           <>
-            <PhoneNote />
             <Section title="Colorwork motifs">
               <MotifStrip />
             </Section>
@@ -105,19 +106,6 @@ const selectCanUndo = (_: EditorState, store: EditorStore) => store.canUndo
 const selectCanRedo = (_: EditorState, store: EditorStore) => store.canRedo
 
 /**
- * What a phone's for, in place of the editing panels: knitting from the
- * chart (Knit, in the header), and the motif library. The yarns stay below,
- * for shopping.
- */
-function PhoneNote() {
-  return (
-    <section className={styles.phoneNote}>
-      <p>Lay out charts on a larger screen. On your phone, knit from this one, or tap a colorwork motif to work on it.</p>
-    </section>
-  )
-}
-
-/**
  * How the chart's saving stands. Signed in: "Saving…" from the first edit
  * until the server has it, then "Saved"; offline, that it'll save when it
  * can. Signed out, nothing until there's colorwork to lose, then only a way
@@ -128,12 +116,21 @@ function SaveState({ projectId, hasWork, signedIn }: { projectId: string; hasWor
   // This chart's latest save: under way, or waiting for the connection (TanStack Query pauses it offline).
   const latest = useMutationState({
     filters: { mutationKey: SAVE_MUTATION_KEY, predicate: (m) => (m.state.variables as Project | undefined)?.id === projectId },
-    select: (m) => ({ status: m.state.status, paused: m.state.isPaused }),
+    select: (m) => ({ status: m.state.status, paused: m.state.isPaused, signedOut: m.state.failureReason instanceof NotSignedInError }),
   }).at(-1)
+  // The session's over: the save waits, and goes once they've signed in again.
+  if (latest?.status === 'pending' && latest.signedOut) {
+    return (
+      <span className={styles.saveState} data-signed-out>
+        <Link to="/sign-in" search={{ redirect: `/p/${projectId}` }}>Sign in<span className={styles.roomyOnly}> to save</span></Link>
+      </span>
+    )
+  }
   if (!signedIn) {
     return (
       <span className={styles.saveState} data-sign-in>
-        {hasWork && <Link to="/sign-in" search={{ redirect: `/p/${projectId}` }}>Sign in to save</Link>}
+        {/* Says what the page it opens asks for: a first account, or signing in again on this browser. */}
+        {hasWork && <Link to="/sign-in" search={{ redirect: `/p/${projectId}` }}>{isReturning() ? 'Sign in to save' : 'Create an account to save'}</Link>}
       </span>
     )
   }
@@ -157,6 +154,11 @@ function TopBar({ phone }: { phone: boolean }) {
 
   return (
     <header className={styles.topBar}>
+      {phone && (
+        <Link to="/" search={{ home: true }} className={styles.phoneLogo} aria-label="SkeinFiend home" title="SkeinFiend">
+          <Logo size={26} />
+        </Link>
+      )}
       <ChartsMenu currentId={project.id} />
       <CommitInput className={styles.name} value={project.name} aria-label="Chart name" onCommit={(name) => store.update((p) => rename(p, name))} />
       <SaveState projectId={project.id} hasWork={project.bands.length > 0} signedIn={Boolean(user)} />
@@ -172,8 +174,8 @@ function TopBar({ phone }: { phone: boolean }) {
         </button>
         </>}
         <AccountMenu returnTo={`/p/${project.id}`} />
-        <Link to="/p/$projectId/knit" params={{ projectId: project.id }} className={ui.button} data-variant="primary">
-          <Icon name="knit" /> Knit
+        <Link to="/p/$projectId/knit" params={{ projectId: project.id }} className={ui.button} data-variant="primary" aria-label="Knit">
+          <Icon name="knit" /> <span className={styles.roomyOnly}>Knit</span>
         </Link>
       </div>
     </header>
@@ -215,10 +217,13 @@ function ViewControls({ canvas, phone }: { canvas: React.RefObject<ChartCanvasHa
   const sizing = useEditor(selectSizing)
   return (
     <nav className={styles.toolbar} aria-label="View">
-      {/* The mark, in the corner above the views, level with the top bar: home to the landing page. */}
-      <Link to="/" search={{ home: true }} className={styles.logo} aria-label="SkeinFiend home" title="SkeinFiend">
-        <Logo size={30} />
-      </Link>
+      {/* The mark, in the corner above the views, level with the top bar: home to the landing page.
+          On a phone, where the views are a bar along the bottom, it's in the top bar instead. */}
+      {!phone && (
+        <Link to="/" search={{ home: true }} className={styles.logo} aria-label="SkeinFiend home" title="SkeinFiend">
+          <Logo size={30} />
+        </Link>
+      )}
       <div className={styles.toolStack}>
         {/* What's shown over the chart, on or off, together or apart. (Sizes are dragged: not on a phone.) */}
         {!phone && <div className={styles.toolGroup} role="group" aria-label="Views">
@@ -289,10 +294,11 @@ function EditorCanvas({ canvas, phone }: { canvas: React.RefObject<ChartCanvasHa
       stitches: state.showingStitches ? store.stitches() : null,
       movable: movableBands(),
       numbers: true,
-      hover: state.hover,
+      // With the sizes showing, the width a press would add is previewed instead (SizingOverlay).
+      hover: state.showingSizing ? null : state.hover,
       // Off the piece, the stitch pointed at is outlined faintly: there's no stitch there.
       hoverFaint: state.hover !== null && getCell(project.outline, state.hover.x, state.hover.y) === NONE,
-      readout: readoutAt(state.pointer, project, issues),
+      readout: readoutAt(state.pointer, project, issues, state.peekRow),
       // With the sizes showing, a ruler over the chart at real lengths.
       measure: state.showingSizing ? measureOf(project) : null,
       faded: state.showingSizing,
@@ -300,10 +306,10 @@ function EditorCanvas({ canvas, phone }: { canvas: React.RefObject<ChartCanvasHa
       // Float lines only for the row being looked at; every problem row gets a mark.
       strands: state.showingFloats && !caused ? store.floats() : null,
       maxFloat: floatRulesOf(project).maxFloat,
-      // The row picked in the Floats list stays marked; one pointed at there is marked lightly.
+      // The row picked in the Floats list stays marked; one pointed at (there, or by its mark in the margin) is outlined as a hovered stitch is.
       markedRows: [
         ...(state.issueRow !== null ? [{ y: state.issueRow, strong: true }] : []),
-        ...(state.peekRow !== null && state.peekRow !== state.issueRow && state.showingFloats ? [{ y: state.peekRow, strong: false }] : []),
+        ...(state.peekRow !== null && state.peekRow !== state.issueRow ? [{ y: state.peekRow, strong: false }] : []),
       ],
       issueRows: state.showingFloats || caused
         ? [...new Set(issues.map((i) => i.y))]
@@ -321,6 +327,8 @@ function EditorCanvas({ canvas, phone }: { canvas: React.RefObject<ChartCanvasHa
   }, [store, movableBands])
 
   const cursorAt = useCallback((x: number, exact: ExactPoint) => {
+    // With the sizes showing, the chart takes new widths, not paint.
+    if (sizingShown.current) return undefined
     if (store.selectedBand()?.painted) return 'crosshair'
     const hit = store.hitTest(x, exact.y, exact.slop, exact.x, exact.slopX)
     // Plain stitches of the piece: pressing paints.
@@ -340,6 +348,7 @@ function EditorCanvas({ canvas, phone }: { canvas: React.RefObject<ChartCanvasHa
   // so a zoom or scroll re-renders the editor only while they show.
   const latestView = useRef<View | null>(null)
   const sizingShown = useRef(sizing)
+  const sizingPress = useRef<SizingPress | null>(null)
   sizingShown.current = sizing
   useEffect(() => {
     if (sizing) setChartView(latestView.current)
@@ -377,11 +386,15 @@ function EditorCanvas({ canvas, phone }: { canvas: React.RefObject<ChartCanvasHa
       // On a phone, dragging moves around the chart rather than changing it.
       interactive={!phone}
       label={phone ? 'Colorwork chart' : 'Colorwork chart. Drag a layer to move it.'}
-      onCellDown={(x, y, e, exact) => (e.button === 0 || e.button === 2) && store.pointerDown(x, y, { exactY: exact.y, slop: exact.slop, exactX: exact.x, slopX: exact.slopX, secondary: e.button === 2 })}
-      onCellMove={(x, y, exact) => store.pointerMove(x, y, exact.y, exact.x)}
+      // With the sizes showing, pressing adds a width there; otherwise it paints, or moves a layer.
+      onCellDown={(x, y, e, exact) => sizing
+        ? e.button === 0 && y >= 0 && y < store.project.outline.height && sizingPress.current?.(e, exact.y)
+        : (e.button === 0 || e.button === 2) && store.pointerDown(x, y, { exactY: exact.y, slop: exact.slop, exactX: exact.x, slopX: exact.slopX, secondary: e.button === 2 })}
+      onCellMove={(x, y, exact) => !sizing && store.pointerMove(x, y, exact.y, exact.x)}
       cursorAt={cursorAt}
       onViewChange={onViewChange}
-      onCellUp={() => store.pointerUp()}
+      // With the sizes showing, a press's drag is the width's own (it commits itself): not a stroke to end.
+      onCellUp={() => !sizing && store.pointerUp()}
       onMarginHover={onMarginHover}
       dropType={MOTIF_DRAG_TYPE}
       onDropAt={(_x, y, key) => add(key, y)}
@@ -389,7 +402,7 @@ function EditorCanvas({ canvas, phone }: { canvas: React.RefObject<ChartCanvasHa
       onPointer={(at) => store.setPointer(at)}
       focusRow={issueRow}
     />
-    {sizing && chartView && <SizingOverlay view={chartView} canvas={canvas} />}
+    {sizing && chartView && <SizingOverlay view={chartView} canvas={canvas} press={sizingPress} />}
     <LayerWindow />
     <YarnWindow />
     </div>
@@ -397,11 +410,13 @@ function EditorCanvas({ canvas, phone }: { canvas: React.RefObject<ChartCanvasHa
 }
 
 /**
- * Room left of the chart for the pointer's readout, so it never covers the
- * stitches. Made once: a new object each render would refit the chart each time.
+ * Room left of the chart for the pointer's readout, so it doesn't cover the
+ * stitches, and the same on the right (where the row numbers are), so the
+ * chart sits in the middle. Made once: a new object each render would refit
+ * the chart each time.
  */
-const READOUT_MARGIN = 130
-const WITH_READOUT = { left: READOUT_MARGIN }
+const READOUT_MARGIN = 88
+const WITH_READOUT = { left: READOUT_MARGIN, right: READOUT_MARGIN }
 const SIZING_WITH_READOUT = { ...SIZING_MARGINS, left: Math.max(SIZING_MARGINS.left, READOUT_MARGIN) }
 
 /**
@@ -436,26 +451,28 @@ function measureOf(project: Project) {
  * and up from the cast-on, in the chosen units to a tenth, with the same in
  * stitches and rows. Nothing off the chart.
  */
-function readoutAt(pointer: { x: number; y: number } | null, project: Project, issues: readonly RowIssue[]) {
+function readoutAt(pointer: { x: number; y: number } | null, project: Project, issues: readonly RowIssue[], markRow: number | null) {
   const { width, height } = project.outline
-  if (!pointer || pointer.x < 0 || pointer.y < 0 || pointer.x > width || pointer.y > height) return null
+  // Pointing at a problem row's mark, left of the chart: that row's readout, with no stitch across.
+  const onMark = pointer !== null && pointer.x < 0 && markRow !== null
+  if (!pointer || (!onMark && (pointer.x < 0 || pointer.y < 0 || pointer.x > width || pointer.y > height))) return null
   // Snapped to the stitch and row pointed at: counted up to and including them (from stitch 1 at the
   // right, and row 1 at the cast-on), and marked at their far edges, where that length ends. The
   // numbers change only from one stitch to the next, not as the pointer moves within one.
-  const [column, row] = [Math.min(width - 1, Math.floor(pointer.x)), Math.min(height - 1, Math.floor(pointer.y))]
-  const [across, up] = [width - column, height - row]
+  const [column, row] = onMark ? [null, markRow] : [Math.min(width - 1, Math.floor(pointer.x)), Math.min(height - 1, Math.floor(pointer.y))]
+  const up = height - row
   const units = getUnits()
   const length = (cm: number) => `${(Math.round((units === 'in' ? cm / CM_PER_INCH : cm) * 10) / 10).toFixed(1)} ${units}`
-  // The piece's width at the row pointed at: around, in the round.
+  // The piece's stitches at the row pointed at (its length is along the bottom).
   const rowIssues = issues.filter((i) => i.y === row)
   let sts = 0
   for (let x = 0; x < width; x++) if (project.outline.cells[row * width + x] !== NONE) sts++
   return {
     x: column,
     y: row,
-    across: `${length(across / stitchesPerCm(project.gauge))} · ${across} sts`,
+    across: column === null ? undefined : `${length((width - column) / stitchesPerCm(project.gauge))} · ${width - column} sts`,
     up: `${length(up / rowsPerCm(project.gauge))} · ${up} rows`,
-    width: sts ? `${length(sts / stitchesPerCm(project.gauge))} ${project.construction === 'round' ? 'around' : 'wide'} · ${sts} sts` : undefined,
+    width: sts ? `${sts} sts` : undefined,
     // The row's longest float, in whole centimeters (or half inches): the Floats list has the rest.
     floats: rowIssues.length ? `Floats up to ${floatLength(Math.max(...rowIssues.map((i) => i.length)) / stitchesPerCm(project.gauge), units)}` : undefined,
   }

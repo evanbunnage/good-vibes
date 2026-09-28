@@ -78,13 +78,17 @@ export function useAutosave(store: EditorStore, onRefused: (error: ChartConflict
     let timer: ReturnType<typeof setTimeout> | undefined
 
     let saving = 0
+    // Refused (someone else's newer save, or the chart deleted): this editor's copy is set aside,
+    // so nothing more of it is saved, not even as it closes, or it would go over theirs.
+    let setAside = false
     // Nothing waiting: no save under way, and no edit since the last one.
     const settle = () => {
-      if (saving === 0 && timer === undefined && store.getState().history.present === saved) setEditsPending(false)
+      if (setAside || (saving === 0 && timer === undefined && store.getState().history.present === saved)) setEditsPending(false)
     }
     const flush = () => {
       clearTimeout(timer)
       timer = undefined
+      if (setAside) return
       const present = store.getState().history.present
       // Edited and then undone back to what's saved: nothing to save.
       if (present === saved) return settle()
@@ -92,9 +96,14 @@ export function useAutosave(store: EditorStore, onRefused: (error: ChartConflict
       saving++
       saveRef.current({ ...present, updatedAt: Date.now() })
         .catch((error: unknown) => {
-          // Someone else's newer save, or the chart deleted: the editor decides what happens.
-          if (error instanceof ChartConflictError || error instanceof ChartGoneError) refusedRef.current(error)
-          else console.error(error)
+          // Someone else's newer save, or the chart deleted: the editor decides what happens
+          // (keeps a copy of what's here, then shows theirs; or goes home).
+          if (error instanceof ChartConflictError || error instanceof ChartGoneError) {
+            setAside = true
+            clearTimeout(timer)
+            timer = undefined
+            refusedRef.current(error)
+          } else console.error(error)
         })
         .finally(() => {
           saving--
@@ -104,7 +113,7 @@ export function useAutosave(store: EditorStore, onRefused: (error: ChartConflict
 
     const unsubscribe = store.subscribe(() => {
       const { history, draft } = store.getState()
-      if (draft || history.present === saved) return
+      if (setAside || draft || history.present === saved) return
       setEditsPending(true)
       clearTimeout(timer)
       timer = setTimeout(flush, SAVE_DELAY)

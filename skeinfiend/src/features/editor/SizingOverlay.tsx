@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { schematicOf, setSchematic } from '@/domain/edits'
 import { formatLength, rowsPerCm, stitchesPerCm } from '@/domain/gauge'
 import { layoutSchematic, type Measurement, type SchematicPiece } from '@/domain/pieces'
@@ -7,11 +7,20 @@ import { useUnits } from '@/features/pieces/units'
 import { roundLength, updateMeasurement } from './measurements'
 import type { ChartCanvasHandle } from '@/render/ChartCanvas'
 import type { View } from '@/render/draw-chart'
-import { useEditorStore, useProject } from './editor-context'
+import { useEditor, useEditorStore, useProject } from './editor-context'
+import type { EditorState } from '@/editor/store'
 import styles from './editor.module.css'
 
 /** Room beside the chart for the sizes, while they show: heights on the left, widths on the right. */
 export const SIZING_MARGINS = { left: 64, right: 150 }
+
+/** A press on the chart while the sizes show: adds a width there (see `SizingOverlay`). */
+export type SizingPress = (e: PointerEvent, rowsDown: number) => void
+
+/** What a drag needs of the press that starts it: React's, on a handle, or the canvas's own. */
+type Press = Pick<PointerEvent, 'clientX' | 'clientY' | 'button' | 'preventDefault' | 'stopPropagation'>
+
+const selectPointer = (s: EditorState) => s.pointer
 
 /** Between labels: two lines for a width, one for a height. */
 const WIDTH_GAP = 30
@@ -24,12 +33,19 @@ const HEIGHT_GAP = 15
  * its height), or its line to change just its height. While dragging, the
  * piece's middle and its cast-on edge stay where they are on screen, so what's
  * dragged stays under the pointer as the chart grows.
+ *
+ * Pressing anywhere on the chart adds a width at that height, as wide as the
+ * piece is there; dragging sideways before letting go sets it. It's then a
+ * width like the others, to shape the piece with.
  */
-export function SizingOverlay({ view, canvas }: { view: View; canvas: React.RefObject<ChartCanvasHandle | null> }) {
+export function SizingOverlay({ view, canvas, press }: { view: View; canvas: React.RefObject<ChartCanvasHandle | null>; press: React.RefObject<SizingPress | null> }) {
   const store = useEditorStore()
   const project = useProject()
   const units = useUnits()
   const [dragging, setDragging] = useState<string | null>(null)
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const svg = useRef<SVGSVGElement>(null)
+  const pointer = useEditor(selectPointer)
   const schematic = useMemo(() => schematicOf(project), [project])
   const layout = useMemo(() => layoutSchematic(schematic, project.gauge, project.construction), [schematic, project.gauge, project.construction])
 
@@ -51,8 +67,11 @@ export function SizingOverlay({ view, canvas }: { view: View; canvas: React.RefO
   const heights = [...new Set(placed.map((p) => p.measurement.height))].sort((a, b) => b - a).map((cm) => ({ cm, y: Y(cm) }))
   for (let i = 1; i < heights.length; i++) heights[i]!.y = Math.max(heights[i]!.y, heights[i - 1]!.y + HEIGHT_GAP)
 
-  /** A drag on a width: previews each change, keeps the piece still under it, and commits it as one step. */
-  function drag(e: React.PointerEvent, id: string, change: (dx: number, dy: number) => (s: SchematicPiece) => SchematicPiece) {
+  /**
+   * A drag on a width: previews each change, keeps the piece still under it, and commits it as one step.
+   * `always`: committed even without moving (a width just added).
+   */
+  function drag(e: Press, id: string, change: (dx: number, dy: number) => (s: SchematicPiece) => SchematicPiece, always = false) {
     const chart = canvas.current
     if (!chart || e.button !== 0) return
     e.preventDefault()
@@ -61,7 +80,7 @@ export function SizingOverlay({ view, canvas }: { view: View; canvas: React.RefO
     // Pointer pixels to centimeters, at the zoom when the drag began.
     const cmAcross = 1 / (start.view.cellWidth * stitchesPerCm(project.gauge))
     const cmUp = 1 / (start.view.cellHeight * rowsPerCm(project.gauge))
-    const edit = (ev: PointerEvent) => (p: Project) =>
+    const edit = (ev: Pick<PointerEvent, 'clientX' | 'clientY'>) => (p: Project) =>
       setSchematic(p, change((ev.clientX - start.x) * cmAcross, (start.y - ev.clientY) * cmUp)(schematicOf(p)))
     // The chart grows from its top left: move it so the middle and the cast-on edge stay put.
     const hold = () => {
@@ -78,24 +97,76 @@ export function SizingOverlay({ view, canvas }: { view: View; canvas: React.RefO
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       setDragging(null)
-      if (!moved) return store.cancelPreview()
+      if (!moved && !always) return store.cancelPreview()
       store.update(edit(ev))
       hold()
     }
     setDragging(id)
+    if (always) store.preview(edit({ clientX: start.x, clientY: start.y }))
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
   }
 
   const round = (cm: number) => roundLength(cm, units)
-  const dragEnd = (e: React.PointerEvent, m: Measurement, side: 1 | -1) =>
+  const dragEnd = (e: Press, m: Measurement, side: 1 | -1) =>
     drag(e, m.id, (dx, dy) => updateMeasurement(m.id, { width: Math.max(0.5, round(m.width + 2 * side * dx)), height: Math.max(0, round(m.height + dy)) }))
   const dragLine = (e: React.PointerEvent, m: Measurement) =>
     drag(e, m.id, (_, dy) => updateMeasurement(m.id, { height: Math.max(0, round(m.height + dy)) }))
 
+  // Where a press would add a width, rounded as it would be: rows down the chart, to centimeters up.
+  const heightAt = (rowsDown: number) => round(Math.min(topCm, Math.max(0, ((H - rowsDown) / H) * topCm)))
+  // As wide as the piece is there: between the widths below and above it.
+  const widthAt = (cm: number) => {
+    const sorted = [...schematic.measurements].sort((a, b) => a.height - b.height)
+    const above = sorted.find((m) => m.height > cm) ?? sorted.at(-1)!
+    const below = [...sorted].reverse().find((m) => m.height < cm) ?? sorted[0]!
+    const t = above.height === below.height ? 0 : (cm - below.height) / (above.height - below.height)
+    return below.width + (above.width - below.width) * t
+  }
+  const existingAt = (cm: number) => schematic.measurements.find((m) => Math.abs(m.height - cm) < 1e-6)
+
+  // A press on the chart (it comes through the canvas, so zooming and panning still work there).
+  press.current = (e, rowsDown) => {
+    const cm = heightAt(rowsDown)
+    const side = e.clientX - (svg.current?.getBoundingClientRect().left ?? 0) >= X(0) ? 1 : -1
+    // One already at that height: that's the one taken hold of.
+    const there = existingAt(cm)
+    if (there) return dragEnd(e, there, side)
+    const width = widthAt(cm)
+    const taken = new Set(schematic.measurements.map((m) => m.name))
+    let n = 1
+    while (taken.has(`Measurement ${n}`)) n++
+    const added = { id: crypto.randomUUID(), name: `Measurement ${n}`, height: cm, width }
+    drag(e, added.id, (dx) => (s) => ({
+      ...s,
+      // Replaced, not appended: the preview may already have it.
+      measurements: [...s.measurements.filter((m) => m.id !== added.id), { ...added, width: Math.max(0.5, round(width + 2 * side * dx)) }]
+        .sort((a, b) => a.height - b.height),
+    }), true)
+  }
+
+  // The width a press would add, where the pointer is: not while dragging, or over one already there.
+  const previewCm = pointer && !dragging && pointer.y >= 0 && pointer.y < H ? heightAt(pointer.y) : null
+  const preview = previewCm !== null && !existingAt(previewCm) ? { y: Y(previewCm), cm: widthAt(previewCm) } : null
+  const previewStitches = preview ? preview.cm * stitchesPerCm(project.gauge) : 0
+
+  const rename = (m: Measurement, name: string) => {
+    setRenaming(null)
+    const trimmed = name.trim()
+    if (trimmed && trimmed !== m.name) store.update((p) => setSchematic(p, updateMeasurement(m.id, { name: trimmed })(schematicOf(p))))
+  }
+
   return (
-    <svg className={styles.sizing} data-dragging={dragging ? '' : undefined} aria-label="Sizes">
+    <svg ref={svg} className={styles.sizing} data-dragging={dragging ? '' : undefined} aria-label="Sizes">
       <polygon className={styles.sizingOutline} points={outline} />
+      {preview && (
+        <g className={styles.sizingPreview}>
+          <line x1={X(-previewStitches / 2)} x2={X(previewStitches / 2)} y1={preview.y} y2={preview.y} />
+          <text x={X(0)} y={preview.y - 5} textAnchor="middle">
+            {length(preview.cm)}{project.construction === 'round' ? ' around' : ''}
+          </text>
+        </g>
+      )}
       {/* Heights up the left, off their lines where they'd crowd. */}
       {heights.map(({ cm, y }) => (
         <g key={cm} className={styles.sizingHeight}>
@@ -119,9 +190,23 @@ export function SizingOverlay({ view, canvas }: { view: View; canvas: React.RefO
             </text>
             {/* A leader out to its label, beside the chart. */}
             <polyline className={styles.sizingLeader} points={`${X(stitches / 2)},${y} ${chartRight + 26},${label} ${chartRight + 32},${label}`} />
-            <text x={chartRight + 36} y={label - 6} dominantBaseline="middle">
-              <tspan className={styles.sizingName}>{m.name}</tspan>
-            </text>
+            {renaming === m.id ? (
+              <foreignObject x={chartRight + 32} y={label - 16} width={SIZING_MARGINS.right - 36} height={20}>
+                <input className={styles.sizingNameInput} defaultValue={m.name} aria-label="Measurement name"
+                  ref={(el) => el?.select()}
+                  onBlur={(e) => rename(m, e.currentTarget.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur()
+                    if (e.key === 'Escape') setRenaming(null)
+                  }} />
+              </foreignObject>
+            ) : (
+              // Click the name to change it.
+              <text className={styles.sizingNameText} x={chartRight + 36} y={label - 6} dominantBaseline="middle" role="button" tabIndex={0}
+                aria-label={`Rename ${m.name}`} onClick={() => setRenaming(m.id)} onKeyDown={(e) => e.key === 'Enter' && setRenaming(m.id)}>
+                <tspan className={styles.sizingName}>{m.name}</tspan>
+              </text>
+            )}
             <text className={styles.sizingNote} x={chartRight + 36} y={label + 8} dominantBaseline="middle">
               {stitches} sts · row {row + 1}
             </text>

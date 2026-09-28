@@ -1,5 +1,10 @@
 import type { QueryClient } from '@tanstack/react-query'
-import { createRootRouteWithContext, Outlet, redirect } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
+import { useMemo } from 'react'
+import { createRootRouteWithContext, Outlet, redirect, useNavigate, useRouterState } from '@tanstack/react-router'
+import { useRepository } from '@/data/projects'
+import { appTools } from '@/features/agent/app-tools'
+import { useAgentTools } from '@/features/agent/use-agent-tools'
 import { currentUser, declinedSignIn, isReturning, markReturning } from '@/data/auth'
 import type { AccountRepository } from '@/data/account-repository'
 import { describeError, Problem } from '@/ui/Problem'
@@ -24,7 +29,23 @@ export const Route = createRootRouteWithContext<RouterContext>()({
     }
     return { user }
   },
-  component: Outlet,
+  component: Root,
   notFoundComponent: () => <Problem title="Page not found" detail="That page doesn't exist." />,
   errorComponent: ({ error }) => <Problem title="Something went wrong" detail={describeError(error)} />,
 })
+
+/** Every page: the app's own agent tools (the knitter's charts), offered wherever they are. */
+function Root() {
+  const repository = useRepository()
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const openId = useRouterState({ select: (s) => /^\/p\/([^/]+)/.exec(s.location.pathname)?.[1] ?? null })
+  const tools = useMemo(() => appTools({
+    repository,
+    queryClient,
+    open: (id) => navigate({ to: '/p/$projectId', params: { projectId: id } }),
+    openId,
+  }), [repository, queryClient, navigate, openId])
+  useAgentTools(tools)
+  return <Outlet />
+}

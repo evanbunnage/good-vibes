@@ -1,16 +1,20 @@
 import { useEffect } from 'react'
-import type { EditorStore } from '@/editor/store'
-import { agentTools, type AgentTool, type ToolResult } from './tools'
+import { NotSignedInError } from '@/data/remote-repository'
+import type { AgentTool, ToolResult } from './tools'
 
-/** The WebMCP surface: `document.modelContext` in current Chrome, `navigator.modelContext` before it. */
+/**
+ * The WebMCP surface: `document.modelContext` (`navigator.modelContext` in
+ * earlier builds). A tool is withdrawn by aborting the signal it was
+ * registered with; earlier builds had `unregisterTool` instead.
+ */
 interface ModelContext {
-  registerTool(tool: AgentTool): void
+  registerTool(tool: AgentTool, options?: { signal?: AbortSignal }): unknown
   unregisterTool?(name: string): void
 }
 
 /**
  * The same tools on the page itself, for agents that drive the browser
- * without WebMCP (or before it's on): `skeinfiend.tools` lists them, and
+ * without WebMCP: `skeinfiend.tools` lists them, and
  * `await skeinfiend.call(name, input)` runs one.
  */
 interface PageTools {
@@ -29,31 +33,66 @@ function modelContext(): ModelContext | undefined {
   return holder(document) ?? holder(navigator)
 }
 
-/** Offers the open pattern's tools to the designer's agent while the editor is open. */
-export function useAgentTools(store: EditorStore): void {
-  useEffect(() => {
-    const tools = agentTools(store)
-    const context = modelContext()
-    const registered: string[] = []
-    for (const tool of tools) {
+/** Every tool on offer now, from each part of the page that offers some. */
+const offered = new Map<string, AgentTool>()
+
+function publish(): void {
+  window.skeinfiend = {
+    tools: [...offered.values()].map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
+    call: async (name, input = {}) => {
+      const tool = offered.get(name)
+      if (!tool) return { content: [{ type: 'text', text: `No tool "${name}". Tools: ${[...offered.keys()].join(', ')}.` }], isError: true }
+      return tool.execute(input)
+    },
+  }
+}
+
+/** A tool whose failures come back as results the agent can read and act on, not as exceptions. */
+function answering(tool: AgentTool): AgentTool {
+  return {
+    ...tool,
+    execute: async (input) => {
       try {
-        context?.registerTool(tool)
-        registered.push(tool.name)
+        return await tool.execute(input)
+      } catch (error) {
+        const text = error instanceof NotSignedInError
+          ? 'The knitter’s session has ended, so their account can’t be reached. Ask them to sign in again (the "Sign in to save" link at the top of the chart); nothing on the chart is lost.'
+          : `That didn’t work: ${error instanceof Error ? error.message : String(error)}`
+        return { content: [{ type: 'text', text }], isError: true }
+      }
+    },
+  }
+}
+
+/**
+ * Offers tools to the designer's agent while the component using it is on the
+ * page: a chart's own while it's open, the app's everywhere. As WebMCP
+ * recommends, what's offered follows what's on screen. Made with `useMemo`,
+ * so they're offered again only when what they work on changes.
+ */
+export function useAgentTools(tools: AgentTool[]): void {
+  useEffect(() => {
+    const context = modelContext()
+    const controller = new AbortController()
+    const offering = tools.map(answering)
+    for (const tool of offering) {
+      offered.set(tool.name, tool)
+      try {
+        // Some builds return a promise: a refusal there is reported, not thrown.
+        Promise.resolve(context?.registerTool(tool, { signal: controller.signal })).catch((error: unknown) =>
+          console.warn(`Couldn't offer ${tool.name} over WebMCP`, error))
       } catch (error) {
         console.warn(`Couldn't offer ${tool.name} over WebMCP`, error)
       }
     }
-    window.skeinfiend = {
-      tools: tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
-      call: async (name, input = {}) => {
-        const tool = tools.find((t) => t.name === name)
-        if (!tool) return { content: [{ type: 'text', text: `No tool "${name}". Tools: ${tools.map((t) => t.name).join(', ')}.` }], isError: true }
-        return tool.execute(input)
-      },
-    }
+    publish()
     return () => {
-      for (const name of registered) context?.unregisterTool?.(name)
-      delete window.skeinfiend
+      controller.abort()
+      for (const tool of offering) {
+        if (offered.get(tool.name) === tool) offered.delete(tool.name)
+        context?.unregisterTool?.(tool.name)
+      }
+      publish()
     }
-  }, [store])
+  }, [tools])
 }

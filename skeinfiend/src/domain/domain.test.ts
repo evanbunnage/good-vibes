@@ -8,7 +8,7 @@ import { MOTIF_LIBRARY } from './motifs'
 import { readsRightToLeft, rowNumber, rowPattern, rowRuns, stitchNumber } from './numbering'
 import { isDark, remapAfterRemoval, yarnCounts } from './palette'
 import { composeChart, createProject } from './project'
-import { MAIN, motifInYarns, toSavedMotif } from './saved-motifs'
+import { MAIN, motifInYarns, toSavedMotif, uniqueMotifName } from './saved-motifs'
 import { BUILT_IN_TEMPLATES, buildOutline, builtInTemplate, describeShaping, layoutSchematic, rectangle, shapingSteps, STITCH, stitchCount, type SchematicPiece } from './pieces'
 import { createBand } from './bands'
 import { orient } from './transform'
@@ -336,5 +336,20 @@ describe('catching long floats', () => {
     const at = catchPoints(23, 5)
     const stretches = [at[0]!, ...at.slice(1).map((p, i) => p - at[i]!), 23 - at.at(-1)!]
     expect(Math.max(...stretches)).toBeLessThanOrEqual(5)
+  })
+})
+
+describe('uniqueMotifName', () => {
+  const grid = gridFromRows(['0'], { 0: 0 })
+  const saved = [toSavedMotif(grid, 0, 'a', 'Tree', 1), toSavedMotif(grid, 0, 'b', 'Tree 2', 2)]
+
+  it('numbers a name that is taken, by a saved motif or a built-in one', () => {
+    expect(uniqueMotifName({ id: 'c', name: 'tree' }, saved, [])).toBe('tree 3')
+    expect(uniqueMotifName({ id: 'c', name: 'Snowflake' }, saved, ['Snowflake'])).toBe('Snowflake 2')
+    expect(uniqueMotifName({ id: 'c', name: 'Star' }, saved, ['Snowflake'])).toBe('Star')
+  })
+
+  it('lets a motif keep its own name', () => {
+    expect(uniqueMotifName({ id: 'a', name: 'Tree' }, saved, [])).toBe('Tree')
   })
 })

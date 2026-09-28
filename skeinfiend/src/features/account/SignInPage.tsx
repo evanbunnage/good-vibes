@@ -1,6 +1,6 @@
 import { useRouter, useSearch } from '@tanstack/react-router'
 import { useId, useState } from 'react'
-import { authClient, declineSignIn, forgetUser } from '@/data/auth'
+import { authClient, declineSignIn, forgetUser, isReturning } from '@/data/auth'
 import ui from '@/ui/ui.module.css'
 import { Wordmark } from '@/ui/Wordmark'
 import styles from './account.module.css'
@@ -14,7 +14,8 @@ export function SignInPage() {
   // Back where they were, query and all.
   const back = () => router.history.push(redirect ?? '/')
   const { redirect } = useSearch({ from: '/sign-in' })
-  const [mode, setMode] = useState<'sign-in' | 'create' | 'forgot'>('sign-in')
+  // Signed in on this browser before: signing in again. Otherwise, most likely, a first account.
+  const [mode, setMode] = useState<'sign-in' | 'create' | 'forgot'>(() => (isReturning() ? 'sign-in' : 'create'))
   const creating = mode === 'create'
   const [sent, setSent] = useState(false)
   const [email, setEmail] = useState('')

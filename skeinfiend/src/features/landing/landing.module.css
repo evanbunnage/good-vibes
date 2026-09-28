@@ -33,6 +33,9 @@
   & p { max-inline-size: 34rem; color: var(--ink-muted); font-size: 1.0625rem; line-height: 1.5; }
 }
 
+/* The wordmark's blackletter in the logo's madder, a touch larger as the wordmark is, to sit even with the serif beside it. */
+.knitters { font-family: 'Pirata One', var(--font-display); font-weight: 400; font-size: 1.12em; color: var(--primary); }
+
 .actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-block-start: 0.4rem; }
 
 .continueSlot { min-block-size: 3.5rem; margin-block-start: 0.6rem; }

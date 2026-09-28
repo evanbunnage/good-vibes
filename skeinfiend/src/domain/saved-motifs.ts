@@ -40,3 +40,17 @@ export function motifInYarns(saved: Grid, yarnCount: number, background: number,
     cell === NONE ? NONE : cell === MAIN || contrasts.length === 0 ? background : contrasts[cell % contrasts.length]!
   return { ...saved, cells: saved.cells.map(yarn) }
 }
+
+/**
+ * A name no other motif in the library has, SkeinFiend's own included:
+ * "Snowflake", or "Snowflake 2" if that's taken. A motif keeps its own name.
+ */
+export function uniqueMotifName(motif: Pick<SavedMotif, 'id' | 'name'>, saved: readonly SavedMotif[], builtInNames: readonly string[]): string {
+  const taken = new Set([...builtInNames, ...saved.filter((m) => m.id !== motif.id).map((m) => m.name)].map((n) => n.toLowerCase()))
+  const base = motif.name.trim() || 'Colorwork motif'
+  if (!taken.has(base.toLowerCase())) return base
+  let n = 2
+  while (taken.has(`${base} ${n}`.toLowerCase())) n++
+  return `${base} ${n}`
+}
+

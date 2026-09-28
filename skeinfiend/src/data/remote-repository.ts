@@ -82,7 +82,15 @@ export class RemoteRepository implements ProjectRepository, LibraryRepository {
       headers: body ? { 'content-type': 'application/json' } : undefined,
     })
     if (response.ok || expected.includes(response.status)) return response
+    if (response.status === 401) throw new NotSignedInError()
     throw new Error(`${method} ${path}: ${response.status}`)
+  }
+}
+
+/** The session's over (it expired, or they signed out elsewhere): nothing reaches the account until they sign in again. */
+export class NotSignedInError extends Error {
+  constructor() {
+    super('Not signed in')
   }
 }
 

@@ -388,7 +388,7 @@ function usePointerInput({ canvasRef, view, callbacks, interactive, zoomAt, setV
         }
       }
       if (!marked) callbacks.current.onMarginHover?.(null, p)
-      if (!spaceHeld) canvas.style.cursor = marked ? 'help' : (callbacks.current.cursorAt?.(cell.x, cell.exact) ?? '')
+      if (!spaceHeld) canvas.style.cursor = marked ? 'default' : (callbacks.current.cursorAt?.(cell.x, cell.exact) ?? '')
     }
 
     const onPointerUp = (e: PointerEvent) => {

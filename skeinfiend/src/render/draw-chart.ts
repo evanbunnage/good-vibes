@@ -66,9 +66,10 @@ export interface ChartDrawing {
   readonly brushTip?: { readonly x: number; readonly y: number; readonly color: string | null } | null
   /**
    * Where the pointer is, measured along the chart's edges: exactly, in stitches
-   * across and rows down from the top-left, with a label for each edge.
+   * across and rows down from the top-left, with a label for each edge. With no
+   * stitch across (pointing at a row's mark in the margin), just the row's.
    */
-  readonly readout?: { readonly x: number; readonly y: number; readonly across: string; readonly up: string; readonly width?: string; readonly floats?: string } | null
+  readonly readout?: { readonly x: number | null; readonly y: number; readonly across?: string; readonly up: string; readonly width?: string; readonly floats?: string } | null
   /** Knitting mode: the row being knitted, top-based. Other rows are dimmed. */
   readonly currentRow?: number | null
   /** The selected pattern band: its rows (top-based, inclusive) and each repeat's outline, in cells. */
@@ -202,7 +203,8 @@ function drawStitches(ctx: CanvasRenderingContext2D, { grid, colors, stitches, v
 
 /**
  * Rows to look at: the one picked has the rest of the chart faded around it,
- * as knitting mode shows the row being knitted; one pointed at is outlined.
+ * as knitting mode shows the row being knitted; one pointed at is outlined,
+ * as a hovered stitch is, the row's width.
  */
 function drawMarkedRows(ctx: CanvasRenderingContext2D, { grid, view, theme, markedRows }: ChartDrawing) {
   const { cellWidth: cw, cellHeight: ch, originX, originY } = view
@@ -218,9 +220,14 @@ function drawMarkedRows(ctx: CanvasRenderingContext2D, { grid, view, theme, mark
     ctx.globalAlpha = 1
   }
   for (const { y, strong } of markedRows!) {
-    ctx.strokeStyle = strong ? theme.text : theme.warning
-    ctx.lineWidth = strong ? 2 : 1.5
-    ctx.strokeRect(left - 1, originY + y * ch - 1, right - left + 2, ch + 2)
+    ctx.strokeStyle = theme.text
+    if (strong) {
+      ctx.lineWidth = 2
+      ctx.strokeRect(left - 1, originY + y * ch - 1, right - left + 2, ch + 2)
+    } else {
+      ctx.lineWidth = 1.5
+      ctx.strokeRect(left + 0.75, originY + y * ch + 0.75, right - left - 1.5, ch - 1.5)
+    }
   }
   ctx.restore()
 }
@@ -623,15 +630,17 @@ function drawHover(ctx: CanvasRenderingContext2D, { view, theme, hover, hoverFai
 function drawReadout(ctx: CanvasRenderingContext2D, { grid, view, theme, readout }: ChartDrawing) {
   const { cellWidth: cw, cellHeight: ch, originX, originY } = view
   const { x, y, across, up, width, floats } = readout!
-  const [px, py] = [originX + x * cw, originY + y * ch]
+  const py = originY + y * ch
   const bottom = originY + grid.height * ch
   ctx.save()
   ctx.globalAlpha = 0.85
   ctx.strokeStyle = theme.text
   ctx.lineWidth = 1
   ctx.beginPath()
-  ctx.moveTo(px, bottom - 4)
-  ctx.lineTo(px, bottom + 3)
+  if (x !== null) {
+    ctx.moveTo(originX + x * cw, bottom - 4)
+    ctx.lineTo(originX + x * cw, bottom + 3)
+  }
   ctx.moveTo(originX + 4, py)
   ctx.lineTo(originX - 3, py)
   ctx.stroke()
@@ -659,11 +668,12 @@ function drawReadout(ctx: CanvasRenderingContext2D, { grid, view, theme, readout
       ctx.fillText(l.text, lx + PAD, top + 1.5 + LINE * (i + 0.5))
     })
   }
-  // Under the chart; zoomed in with the bottom edge out of view, just inside the view's bottom edge, over the stitches.
+  // Under the chart, below the stitch numbers (6px down, up to 12px tall); zoomed in with the bottom
+  // edge out of view, just inside the view's bottom edge, over the stitches.
   const viewHeight = ctx.canvas.height / (ctx.getTransform().d || 1)
-  const under = bottom + 22
+  const under = bottom + 20 + LINE / 2 + 2
   const acrossOver = under + LINE / 2 > viewHeight - 4
-  tag([{ text: across }], px - widthOf([{ text: across }]) / 2, acrossOver ? viewHeight - 16 : under, acrossOver)
+  if (x !== null && across) tag([{ text: across }], originX + x * cw - widthOf([{ text: across }]) / 2, acrossOver ? viewHeight - 16 : under, acrossOver)
   // Beside the row, on the left, clear of the problem-row marks: the height up, the piece's width there, and the row's long floats.
   // Each measurement on its own line ("13.2 cm", "42 rows"), so the tag is tall and narrow.
   const split = (text: string): Line[] => text.split(' · ').map((part) => ({ text: part }))

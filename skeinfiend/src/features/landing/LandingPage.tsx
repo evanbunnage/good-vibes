@@ -53,7 +53,7 @@ export function LandingPage() {
       </header>
 
       <main className={styles.hero}>
-        <h1>Colorwork chart design for knitters</h1>
+        <h1>Colorwork chart design for <span className={styles.knitters}>Knitters</span></h1>
         <div className={styles.actions}>
           <button type="button" className={ui.button} data-variant="primary" disabled={starting !== null}
             onClick={() => runAction(() => start(createProject({ id: crypto.randomUUID(), name: 'New chart', now: Date.now() })))}>

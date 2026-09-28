@@ -1,11 +1,13 @@
 import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Outlet, useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { forgetLastChart, rememberLastChart } from '@/data/last-chart'
-import { ProjectNotFoundError, projectKeys, projectQuery, useRepository } from '@/data/projects'
+import { hasUnsavedChart, ProjectNotFoundError, projectKeys, projectQuery, useRepository } from '@/data/projects'
 import { ChartGoneError, type ChartConflictError } from '@/data/remote-repository'
 import { EditorStore } from '@/editor/store'
+import { agentTools } from '@/features/agent/tools'
 import { useAgentTools } from '@/features/agent/use-agent-tools'
+import { useLibrary } from '@/data/library'
 import { EditorContext, useAutosave } from '@/features/editor/editor-context'
 import { describeError, Problem } from '@/ui/Problem'
 
@@ -15,7 +17,11 @@ import { describeError, Problem } from '@/ui/Problem'
  */
 export const Route = createFileRoute('/p/$projectId')({
   // The latest from the account, unless it was read moments ago (hovering its link preloads it).
-  loader: ({ context, params }) => context.queryClient.fetchQuery(projectQuery(context.repository, params.projectId)),
+  // With changes still to save (back from signing in again, say), the cached copy is the newest: not the account's.
+  loader: ({ context, params }) => {
+    const query = projectQuery(context.repository, params.projectId)
+    return hasUnsavedChart(context.queryClient, params.projectId) ? context.queryClient.ensureQueryData(query) : context.queryClient.fetchQuery(query)
+  },
   // Where the app opens next time: on opening it, not on hovering its link.
   onEnter: ({ params }) => rememberLastChart(params.projectId),
   component: ProjectLayout,
@@ -57,7 +63,15 @@ function ProjectEditor({ projectId }: { projectId: string }) {
     setStore(new EditorStore(error.project))
   }
   useAutosave(store, refused)
-  useAgentTools(store)
+  // This chart's tools, while it's open: the colorwork motif library through the page's own cache.
+  const library = useLibrary()
+  const tools = useMemo(() => agentTools(store, {
+    motifs: () => library.motifs(),
+    putMotif: (motif) => library.putMotif(motif),
+    removeMotif: (id) => library.removeMotif(id),
+    changed: () => void client.invalidateQueries({ queryKey: ['library'] }),
+  }), [store, library, client])
+  useAgentTools(tools)
   return (
     <EditorContext value={store}>
       <Outlet />

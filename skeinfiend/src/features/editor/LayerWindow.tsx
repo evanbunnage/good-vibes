@@ -14,6 +14,7 @@ import type { EditorState, EditorStore } from '@/editor/store'
 import { ChartCanvas } from '@/render/ChartCanvas'
 import { DeleteButton } from '@/ui/DeleteButton'
 import { FloatingWindow } from '@/ui/FloatingWindow'
+import { usePhone } from '@/ui/use-phone'
 import { Icon } from '@/ui/Icon'
 import { NumberField } from '@/ui/NumberField'
 import { SliderField } from '@/ui/SliderField'
@@ -70,6 +71,7 @@ function PreviewWindow({ motifKey }: { motifKey: string }) {
   const saveMotif = useSaveMotif()
   const deleteMotif = useDeleteMotif()
   const [editing, setEditing] = useState(false)
+  const phone = usePhone()
   const choice = [...saved, ...builtIn].find((c) => c.key === motifKey)
   if (!choice) return null
   const colors = project.yarns.map((y) => y.hex)
@@ -81,7 +83,8 @@ function PreviewWindow({ motifKey }: { motifKey: string }) {
       <div className={styles.preview} style={{ background: project.yarns[project.background]?.hex }}>
         <ChartPreview grid={choice.motif} colors={colors} fill />
       </div>
-      <p className={styles.previewNote}>{choice.motif.width} × {choice.motif.height} · Not on the chart yet. Add it, or drag it onto the rows it should go on.</p>
+      {/* On a phone the chart can't take a drag: just adding it. */}
+      <p className={styles.previewNote}>{choice.motif.width} × {choice.motif.height} · Not on the chart yet.{phone ? '' : ' Add it, or drag it onto the rows it should go on.'}</p>
       <button type="button" className={ui.button} data-variant="primary" onClick={() => {
         motifPreview.set(null)
         add(choice.key)

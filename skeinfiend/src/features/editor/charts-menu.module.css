@@ -18,6 +18,14 @@
   border-radius: var(--radius-l);
   background: var(--surface);
   box-shadow: 0 10px 28px -10px rgb(var(--shadow-tint) / 0.35);
+
+  /* On a phone, the screen's width less its margins, under the top bar, wherever the button is. */
+  @media (width < 44rem) {
+    position: fixed;
+    inset-block-start: calc(env(safe-area-inset-top, 0px) + var(--tap) + 1.4rem);
+    inset-inline: 0.75rem;
+    inline-size: auto;
+  }
 }
 
 .starts { display: flex; flex-wrap: wrap; gap: 0.4rem; }

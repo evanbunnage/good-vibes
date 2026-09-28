@@ -1,6 +1,7 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createContext, useContext } from 'react'
-import type { SavedMotif } from '@/domain/saved-motifs'
+import { MOTIF_LIBRARY } from '@/domain/motifs'
+import { uniqueMotifName, type SavedMotif } from '@/domain/saved-motifs'
 
 /**
  * The designer's own motifs, kept apart from any one project so they can be
@@ -29,8 +30,10 @@ export function useSavedMotifs() {
   return useQuery(queryOptions({ queryKey: keys.motifs, queryFn: () => library.motifs() }))
 }
 
+/** Saved under a name no other motif has ("Snowflake 2" beside SkeinFiend's Snowflake), so each is told apart. */
 export function useSaveMotif() {
-  return useLibraryMutation(keys.motifs, (library, motif: SavedMotif) => library.putMotif(motif))
+  return useLibraryMutation(keys.motifs, async (library, motif: SavedMotif) =>
+    library.putMotif({ ...motif, name: uniqueMotifName(motif, await library.motifs(), MOTIF_LIBRARY.map((m) => m.name)) }))
 }
 
 export function useDeleteMotif() {

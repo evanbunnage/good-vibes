@@ -1,6 +1,9 @@
-import { bandSpan, bandStitchTile, bandTile, centeredOffset, createBand, placementOf, type Band, type Placement } from '@/domain/bands'
+import { bandSpan, bandStitchTile, bandTile, centeredOffset, createBand, placementOf, scaledMotif, type Band, type Placement } from '@/domain/bands'
+import { MOTIF_LIBRARY } from '@/domain/motifs'
+import { editedAt, MAIN, motifInYarns, toSavedMotif, uniqueMotifName, type SavedMotif } from '@/domain/saved-motifs'
+import type { Rotation } from '@/domain/transform'
 import { KNIT, STITCHES, stitchNamed, stitchType } from '@/domain/stitches'
-import { addBand, addYarn, adjustBand, dismissFloats, removeBand, renamePiece, reorderBand, setBackground, setConstruction, setGauge, setScale, setSchematic, setSizes, setSwatch, sizeIndex, switchSize, updateBand, updateYarn } from '@/domain/edits'
+import { addBand, addYarn, adjustBand, dismissFloats, duplicateBand, removeBand, removeYarn, rename, renamePiece, reorderBand, schematicOf, setBackground, setConstruction, setGauge, setPlacement, setScale, setSchematic, setSizes, setSwatch, sizeIndex, switchSize, takeLibraryVersion, updateBand, updateYarn } from '@/domain/edits'
 import { isValidGauge, rowsPerCm, stitchesPerCm, type Gauge } from '@/domain/gauge'
 import { createGrid, MAX_SIZE, NONE, type Grid } from '@/domain/grid'
 import { rowNumber } from '@/domain/numbering'
@@ -8,7 +11,8 @@ import { constructionOf, projectRowsWorked } from '@/domain/instructions'
 import { writeRow, yarnLabels } from '@/domain/written'
 import { isHexColor, MAX_YARNS, YARN_WEIGHTS, yarnCounts, type Yarn } from '@/domain/palette'
 import { MARGIN, METERS_PER_YARD } from '@/domain/yarn-estimate'
-import type { SchematicPiece } from '@/domain/pieces'
+import { layoutSchematic } from '@/domain/pieces'
+import type { Measurement, SchematicPiece } from '@/domain/pieces'
 import { floatRulesOf, type Project } from '@/domain/project'
 import type { EditorStore } from '@/editor/store'
 import { renderChartImage } from '@/render/export-image'
@@ -29,6 +33,15 @@ export interface AgentTool {
 export interface ToolResult {
   readonly content: ReadonlyArray<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: 'image/png' }>
   readonly isError?: boolean
+}
+
+/** The knitter's own colorwork motifs, for the library tools: what's saved, saving, and removing. */
+export interface LibraryAccess {
+  motifs(): Promise<SavedMotif[]>
+  putMotif(motif: SavedMotif): Promise<void>
+  removeMotif(id: string): Promise<void>
+  /** Told after a save or removal, so the page's list of motifs catches up. */
+  changed(): void
 }
 
 class ToolError extends Error {}
@@ -61,10 +74,41 @@ const RIB_SCHEMA = {
 /** Turned upside down, not mirrored: a half turn, mirrored back. */
 const UPSIDE_DOWN = { rotation: 180, mirror: true } as const
 
-const layerRef = { type: 'string', description: 'The layer, by name or id (from get_chart).' }
-const yarnRef = { type: 'string', description: 'A yarn in the chart, by name (or its number from get_chart).' }
+const layerRef = { type: 'string', description: 'The layer, by name or id (from get-chart).' }
+const yarnRef = { type: 'string', description: 'A yarn in the chart, by name (or its number from get-chart).' }
+const GAUGE_SCHEMA = {
+  type: 'object',
+  properties: {
+    stitches: { type: 'number' },
+    rows: { type: 'number' },
+    over: { type: 'number', description: 'Centimeters the stitches and rows are counted over: 10 for 10 cm, 10.16 for 4 inches.' },
+  },
+  required: ['stitches', 'rows'],
+}
 
-export function agentTools(store: EditorStore): AgentTool[] {
+/** A library motif's chart as characters: "." clear, "M" the main color, and A, B… its contrast colors in order. */
+function libraryChart(grid: Grid): string[] {
+  // Contrast colors A, B, C…, skipping M, which is the main color.
+  const letter = (c: number) => (c === NONE ? '.' : c === MAIN ? 'M' : 'ABCDEFGHIJKLNOPQRSTUVWXYZ'[c] ?? '?')
+  return Array.from({ length: grid.height }, (_, y) => Array.from({ length: grid.width }, (_, x) => letter(grid.cells[y * grid.width + x]!)).join(''))
+}
+
+export function agentTools(store: EditorStore, library?: LibraryAccess): AgentTool[] {
+  const needLibrary = (): LibraryAccess => {
+    if (!library) throw new ToolError('The colorwork motif library isn’t available here.')
+    return library
+  }
+
+  /** A motif from the library, by name: SkeinFiend's own, or one the knitter saved. */
+  const findMotif = async (ref: unknown) => {
+    const name = String(ref ?? '').trim().toLowerCase()
+    const saved = library ? await library.motifs() : []
+    const mine = saved.find((m) => m.name.toLowerCase() === name || m.id === name)
+    if (mine) return { mine }
+    const builtIn = MOTIF_LIBRARY.find((m) => m.name.toLowerCase() === name || m.id === name)
+    if (builtIn) return { builtIn }
+    throw new ToolError(`No colorwork motif "${ref}". See get-library for them all.`)
+  }
   const yarnIndex = (ref: unknown, project = store.project): number => {
     const value = String(ref ?? '').trim()
     const byName = project.yarns.findIndex((y) => y.name.toLowerCase() === value.toLowerCase())
@@ -90,7 +134,7 @@ export function agentTools(store: EditorStore): AgentTool[] {
   /** What changed made anything harder to knit: the problem rows, as the Floats panel counts them. */
   const floatNote = () => {
     const rows = new Set(store.allIssues().map((i) => i.y)).size
-    return rows ? ` ${rows} ${rows === 1 ? 'row has' : 'rows have'} long floats: see get_chart.` : ''
+    return rows ? ` ${rows} ${rows === 1 ? 'row has' : 'rows have'} long floats: see get-chart.` : ''
   }
 
   /** How a layer's repeat fits the rows it's on, for the result of placing it. */
@@ -111,16 +155,16 @@ export function agentTools(store: EditorStore): AgentTool[] {
 
   const tools: AgentTool[] = [
     {
-      name: 'get_chart',
+      name: 'get-chart',
       description:
-        'The colorwork chart open in SkeinFiend: the piece it goes on (size in stitches and rows, knitted in the round or flat), the yarns (colors), and the colorwork layers stacked on it, each with its chart. Rows are numbered as knitters do: row 1 is the cast-on row, at the bottom. Also lists rows with floats too long to knit comfortably.',
+        'The colorwork chart open in SkeinFiend: the piece it goes on (its gauge, whether it’s knitted in the round or flat, its size in stitches and rows, and the named widths that shape it), the yarns, the colorwork layers stacked on it (each with its chart and settings), the float limit, and the knitter’s swatch. Rows are numbered as knitters do: row 1 is the cast-on row, at the bottom. Also lists rows with floats too long to knit comfortably.',
       inputSchema: { type: 'object', properties: {} },
-      execute: () => text(JSON.stringify(describe(store.project, store), null, 1)),
+      execute: async () => text(JSON.stringify(describe(store.project, store, library ? await library.motifs() : []), null, 1)),
     },
     {
-      name: 'set_yarns',
+      name: 'set-yarns',
       description:
-        'Adds yarns, or changes them: a name, a color, which is the main color (knitted wherever no layer has a stitch). To try the chart in other colors, change the yarns rather than the charts: every layer follows. Also what each yarn is, from its ball band (a photo of the label, or the yarn’s page in a shop): brand, weight, fiber, a skein’s length and weight, and a link. With a skein’s length, `estimate_yarn` says how many skeins the chart takes. Give null to clear a detail. All the changes are one step the knitter can undo, so each colorway tried is one undo away from the last.',
+        'Adds yarns, changes them, or removes them: a name, a color, which is the main color (knitted wherever no layer has a stitch). To try the chart in other colors, change the yarns rather than the charts: every layer follows. Also what each yarn is, from its ball band (a photo of the label, or the yarn’s page in a shop): brand, weight, fiber, a skein’s length and weight, and a link. With a skein’s length, estimate-yarn says how many skeins the chart takes. Give null to clear a detail. All the changes are one step the knitter can undo, so each colorway tried is one undo away from the last.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -140,6 +184,7 @@ export function agentTools(store: EditorStore): AgentTool[] {
                 yards: { type: ['number', 'null'], description: 'Or its length in yards.' },
                 grams: { type: ['number', 'null'], description: 'Weight of one skein in grams.' },
                 url: { type: ['string', 'null'], description: 'The yarn’s page.' },
+                remove: { type: 'boolean', description: 'Remove this yarn. Its stitches in the layers go clear, so the main color shows; if it was the main color, another becomes it.' },
               },
             },
           },
@@ -148,10 +193,15 @@ export function agentTools(store: EditorStore): AgentTool[] {
       },
       execute: ({ yarns }) => {
         if (!Array.isArray(yarns) || !yarns.length) throw new ToolError('`yarns` must list the yarns to add or change.')
-        const changed: number[] = []
         let next = store.project
+        const removing: string[] = []
         for (const entry of yarns as Array<Record<string, unknown>>) {
           const { yarn, name, hex, main } = entry
+          if (entry.remove === true) {
+            // Removed last, by name: removing shifts the others' numbers.
+            removing.push(next.yarns[yarnIndex(yarn, next)]!.name)
+            continue
+          }
           if (hex !== undefined && !isHexColor(String(hex))) throw new ToolError(`Color must be #rrggbb, not "${hex}".`)
           let index: number
           if (yarn === undefined) {
@@ -161,7 +211,10 @@ export function agentTools(store: EditorStore): AgentTool[] {
           } else index = yarnIndex(yarn, next)
           next = updateYarn(next, index, { ...(name !== undefined && { name: String(name) }), ...(hex !== undefined && { hex: String(hex).toLowerCase() }), ...yarnDetails(entry) })
           if (main) next = setBackground(next, index)
-          changed.push(index)
+        }
+        for (const name of removing) {
+          if (next.yarns.length <= 1) throw new ToolError('A chart needs at least one yarn.')
+          next = removeYarn(next, yarnIndex(name, next))
         }
         const result = next
         store.update(() => result)
@@ -170,7 +223,7 @@ export function agentTools(store: EditorStore): AgentTool[] {
       },
     },
     {
-      name: 'shape_piece',
+      name: 'shape-piece',
       description:
         'Makes the piece from a pattern’s own numbers, to put colorwork on a part of it (a yoke, a sleeve, a hat’s body). Give its gauge and the stitch count after each stretch of shaping, as the pattern says “you should now have”: e.g. a top-down yoke that starts at 136 stitches (row 0) and has 336 after 40 rounds (row 40). Stitches in between change evenly. The chart is as many rounds tall as the last point. Layers already on the piece stay where they are. When the pattern gives sizes (“cast on 96 (96, 104, 112) sts”), give every size in `sizes` instead of `shape`: the knitter switches between them, with the colorwork on each, and picks theirs.',
       inputSchema: {
@@ -244,52 +297,156 @@ export function agentTools(store: EditorStore): AgentTool[] {
       },
     },
     {
-      name: 'set_size',
-      description: 'Shows another size of the pattern, with the colorwork on it: to compare sizes, or the knitter’s own. Only for a piece made with sizes.',
-      inputSchema: { type: 'object', properties: { size: { type: 'string', description: 'The size’s name, from get_chart.' } }, required: ['size'] },
-      execute: ({ size }) => {
-        const sizes = store.project.sizes
-        if (!sizes) throw new ToolError('This piece has one size: make it with `sizes` in shape_piece to have several.')
-        const index = sizes.findIndex((s) => s.name.toLowerCase() === String(size).trim().toLowerCase())
-        if (index < 0) throw new ToolError(`No size "${size}". The sizes are: ${sizes.map((s) => s.name).join(', ')}.`)
-        store.update((p) => switchSize(p, index))
-        const { width, height } = store.project.outline
-        return text(`Showing size ${sizes[index]!.name}: ${height} rows, up to ${width} stitches.${floatNote()}`)
-      },
-    },
-    {
-      name: 'add_chart',
+      name: 'update-chart',
       description:
-        'Adds a colorwork chart as a layer on the piece. Write the chart one character per stitch, rows top first, exactly as it reads on the page (the bottom row is knitted first, stitches as seen). `key` says which yarn each character is; map the chart’s background to "main" so the main color shows through and layers can stack. Add " purl" for purl stitches (the chart’s dot or dash symbol): "Canary purl", or "main purl" for a purl in the main color. Everything else is knit. Placement: "row" repeats it across the piece over its rows (a yoke or brim band), "tile" repeats it all over, "single" puts one copy in the middle.',
+        'Changes the chart itself, as the knitter can: its name; the piece’s name, gauge, and whether it’s worked in the round or flat; the size shown, for a pattern with sizes; the piece’s widths, which shape it (add, change, rename, or remove them, in centimeters or the pattern’s own rows and stitches); the float limit; the knitter’s weighed swatch; and long floats to stop flagging. Everything given is one step the knitter can undo. Layers stay where they are on the fabric.',
       inputSchema: {
         type: 'object',
         properties: {
-          name: { type: 'string', description: 'What the chart is called, e.g. "Chart A".' },
+          name: { type: 'string', description: 'The chart’s name.' },
+          piece: { type: 'string', description: 'The piece’s name, e.g. "Yoke".' },
+          gauge: GAUGE_SCHEMA,
+          worked: { type: 'string', enum: ['round', 'flat'] },
+          size: { type: 'string', description: 'The size to show, by its name (from get-chart). Widths given here change that size.' },
+          widths: {
+            type: 'array',
+            description: 'Widths to add or change, by name: a name the piece doesn’t have adds one. Each is how wide the piece is at a height up it; its outline runs straight between them.',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string', description: 'Which width, e.g. "Cast on", "Underarm", "Top".' },
+                rename: { type: 'string', description: 'A new name for it.' },
+                height: { type: 'number', description: 'Centimeters up from the cast-on edge.' },
+                width: { type: 'number', description: 'Centimeters across (around, in the round).' },
+                row: { type: 'number', description: 'Or the pattern’s own count: rows worked to reach it (0 at the cast-on).' },
+                stitches: { type: 'number', description: 'Or: stitches across (around) there.' },
+              },
+              required: ['name'],
+            },
+          },
+          removeWidths: { type: 'array', items: { type: 'string' }, description: 'Widths to remove, by name. At least two stay.' },
+          floatLimit: { type: 'number', description: 'The longest float, in centimeters, before a row is flagged: 2.5 is the usual rule.' },
+          swatch: {
+            type: ['object', 'null'],
+            description: 'The knitter’s swatch, knitted in the colorwork: its size and weight make the yarn estimate their own (once every yarn has a skein’s length and weight, from set-yarns). null removes it.',
+            properties: { width: { type: 'number', description: 'Centimeters.' }, height: { type: 'number', description: 'Centimeters.' }, grams: { type: 'number' } },
+          },
+          ignoreFloats: {
+            description: 'Rows whose long floats the knitter is happy with (they’ll catch them, or the yarn is grippy), by number, or "all": they stop being flagged until they change.',
+            oneOf: [{ type: 'array', items: { type: 'number' } }, { type: 'string', enum: ['all'] }],
+          },
+        },
+      },
+      execute: (input) => {
+        const done: string[] = []
+        store.update((p) => {
+          let next = p
+          if (input.name !== undefined) next = rename(next, String(input.name))
+          if (input.piece !== undefined) next = renamePiece(next, String(input.piece))
+          if (input.gauge !== undefined) {
+            const g = input.gauge as Partial<Gauge>
+            const gauge: Gauge = { stitches: Number(g.stitches), rows: Number(g.rows), ...(g.over !== undefined && { over: Number(g.over) }) }
+            if (!isValidGauge(gauge)) throw new ToolError('That gauge doesn’t look right: give stitches and rows, and the centimeters they’re counted over.')
+            next = setGauge(next, gauge)
+          }
+          if (input.worked !== undefined) {
+            if (input.worked !== 'round' && input.worked !== 'flat') throw new ToolError('`worked` is round or flat.')
+            next = setConstruction(next, input.worked)
+          }
+          if (input.size !== undefined) {
+            const sizes = next.sizes
+            if (!sizes) throw new ToolError('This piece has one size: shape it with `sizes` in shape-piece to have several.')
+            const index = sizes.findIndex((s) => s.name.toLowerCase() === String(input.size).trim().toLowerCase())
+            if (index < 0) throw new ToolError(`No size "${input.size}". The sizes are: ${sizes.map((s) => s.name).join(', ')}.`)
+            next = switchSize(next, index)
+          }
+          if (input.widths !== undefined || input.removeWidths !== undefined) next = setSchematic(next, editWidths(schematicOf(next), next, input.widths, input.removeWidths))
+          if (input.floatLimit !== undefined) {
+            const cm = Number(input.floatLimit)
+            if (!(cm > 0)) throw new ToolError('`floatLimit` is a length in centimeters, like 2.5.')
+            next = { ...next, floatRules: { ...next.floatRules, maxFloatCm: cm } }
+          }
+          if (input.swatch !== undefined) {
+            const sw = input.swatch as { width?: unknown; height?: unknown; grams?: unknown } | null
+            const [w, h, g] = [Number(sw?.width), Number(sw?.height), Number(sw?.grams)]
+            if (sw && !(w > 0 && h > 0 && g > 0)) throw new ToolError('Give the swatch’s width and height in centimeters, and its weight in grams (or null to remove it).')
+            next = setSwatch(next, sw ? { widthCm: w, heightCm: h, grams: g } : undefined)
+          }
+          if (input.ignoreFloats !== undefined) {
+            const { height } = next.outline
+            const flagged = new Map<number, ReturnType<typeof store.issues>>()
+            for (const issue of store.issues(next)) flagged.set(issue.y, [...(flagged.get(issue.y) ?? []), issue])
+            const wanted = input.ignoreFloats === 'all' ? [...flagged.keys()] : (Array.isArray(input.ignoreFloats) ? input.ignoreFloats : []).map((r) => height - Math.round(Number(r)))
+            const ignoring = wanted.filter((y) => flagged.has(y))
+            next = ignoring.reduce((n, y) => dismissFloats(n, y, flagged.get(y)!), next)
+            done.push(ignoring.length ? `Ignoring long floats in rows ${ignoring.map((y) => height - y).sort((a, b) => a - b).join(', ')}, until they change.` : 'None of those rows have long floats flagged.')
+          }
+          return next
+        })
+        const project = store.project
+        const { width, height } = project.outline
+        const widths = [...project.piece.measurements].sort((a, b) => a.height - b.height).map((m) => `${m.name} ${m.width} cm at ${m.height} cm`).join(', ')
+        return text(`"${project.name}": ${project.piece.name}, ${height} ${project.construction === 'round' ? 'rounds' : 'rows'}, up to ${width} stitches. Widths: ${widths}.${done.length ? ` ${done.join(' ')}` : ''}${floatNote()}`)
+      },
+    },
+    {
+      name: 'add-layer',
+      description:
+        'Adds a colorwork chart as a layer on the piece: a chart read from a pattern, or a colorwork motif from the library (`motif`, see get-library). Write a chart one character per stitch, rows top first, exactly as it reads on the page (the bottom row is knitted first, stitches as seen). `key` says which yarn each character is; map the chart’s background to "main" so the main color shows through and layers can stack. Add " purl" for purl stitches (the chart’s dot or dash symbol): "Canary purl", or "main purl" for a purl in the main color. Everything else is knit. Placement: "row" repeats it across the piece over its rows (a yoke or brim band), "tile" repeats it all over, "single" puts one copy in the middle (to duplicate stitch after knitting, until changed with update-layer).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'What the chart is called, e.g. "Chart A". Default: the motif’s name.' },
+          motif: { type: 'string', description: 'Instead of `rows` and `key`: a colorwork motif from the library, by name (see get-library).' },
+          yarn: { ...yarnRef, description: 'With `motif`: the yarn for its first contrast color. Default: the first yarn that isn’t the main color.' },
           rows: { type: 'array', items: { type: 'string' }, description: 'The chart, top row first, one character per stitch. Every row the same length.' },
           key: {
             type: 'object',
             additionalProperties: { type: 'string' },
-            description: 'Each character used, to a yarn name from get_chart (or "main" to show the main color), a stitch, or both: "Madder", "k1 tbl", "main purl", "Madder k2tog". Stitches: purl, k1 tbl, yo, k2tog, ssk, M1, M1L, M1R, M1 p-st, sl, bobble, no stitch; anything else is knit. Match the chart’s own key to these: books draw them differently (a dash or a dot for purl, a loop for k1 tbl). E.g. {".": "main", "X": "Madder", "-": "purl", "Q": "k1 tbl"}.',
+            description: 'Each character used, to a yarn name from get-chart (or "main" to show the main color), a stitch, or both: "Madder", "k1 tbl", "main purl", "Madder k2tog". Stitches: purl, k1 tbl, yo, k2tog, ssk, M1, M1L, M1R, M1 p-st, sl, bobble, no stitch; anything else is knit. Match the chart’s own key to these: books draw them differently (a dash or a dot for purl, a loop for k1 tbl). E.g. {".": "main", "X": "Madder", "-": "purl", "Q": "k1 tbl"}.',
           },
           placement: { type: 'string', enum: ['row', 'tile', 'single'] },
           bottomRow: { type: 'number', description: 'The knitted row the chart’s bottom row falls on (row 1 is the cast-on). Defaults to a free spot.' },
-          gap: { type: 'number', description: 'Stitches of main color between repeats across. Default 0.' },
+          gap: { type: 'number', description: 'Stitches of main color between repeats across. Default 0 (or the motif’s own spacing).' },
           upsideDown: { type: 'boolean', description: 'Turn the chart upside down: for a piece knitted top-down (a yoke from the neck), so a chart drawn bottom-up still reads the right way up when worn.' },
         },
-        required: ['name', 'rows', 'key', 'placement'],
+        required: ['placement'],
       },
-      execute: ({ name, rows, key, placement, bottomRow, gap = 0, upsideDown }) => {
-        const { colors: chart, stitches } = parseChart(rows, key, (ref) => yarnIndex(ref))
+      execute: async ({ name, motif, yarn, rows, key, placement, bottomRow, gap, upsideDown }) => {
+        const project = store.project
+        let chart: Grid
+        let stitches: Grid | null = null
+        let spacing = 0
+        let fromLibrary: Band['fromLibrary']
+        let motifName: string | undefined
+        if (motif !== undefined) {
+          // As the knitter adds one from the strip: in this chart's yarns, remembering where it came from.
+          const found = await findMotif(motif)
+          const contrast = yarn !== undefined ? yarnIndex(yarn) : (project.background + 1) % project.yarns.length
+          if (found.builtIn) {
+            chart = found.builtIn.build(contrast)
+            spacing = found.builtIn.spacing
+            fromLibrary = { motifId: `built-in:${found.builtIn.id}`, editedAt: 0 }
+            motifName = found.builtIn.name
+          } else {
+            chart = motifInYarns(found.mine!.grid, project.yarns.length, project.background, contrast)
+            fromLibrary = { motifId: found.mine!.id, editedAt: editedAt(found.mine!) }
+            motifName = found.mine!.name
+          }
+        } else {
+          ;({ colors: chart, stitches } = parseChart(rows, key, (ref) => yarnIndex(ref)))
+        }
         const where = placementFrom(placement)
         const span = bottomRow === undefined ? store.rowsForNewBand(chart.height) : rowsFrom(Number(bottomRow), chart.height)
-        const gapX = Math.max(0, Math.round(Number(gap)))
-        const width = store.project.outline.width
+        const gapX = Math.max(0, Math.round(Number(gap ?? spacing)))
+        const width = project.outline.width
         const band: Band = {
-          ...createBand(crypto.randomUUID(), String(name || `Chart ${store.project.bands.length + 1}`), chart, where === 'tile' ? null : span),
+          ...createBand(crypto.randomUUID(), String(name || motifName || `Chart ${project.bands.length + 1}`), chart, where === 'tile' ? null : span),
           gapX,
           offsetX: where === 'single' ? Math.floor((width - chart.width) / 2) : centeredOffset(width, chart.width, gapX),
-          ...(where === 'single' && { once: true }),
+          ...(where === 'single' && { once: true, afterKnitting: true }),
           ...(stitches && { stitches }),
+          ...(fromLibrary && { fromLibrary }),
           ...(upsideDown === true && UPSIDE_DOWN),
         }
         store.update((p) => addBand(p, band))
@@ -298,8 +455,8 @@ export function agentTools(store: EditorStore): AgentTool[] {
       },
     },
     {
-      name: 'update_layer',
-      description: 'Moves or changes a layer: which rows it sits on, how it repeats, its spacing, its scale (each stitch knitted as a block), whether it shows, its name, or where it is in the stack (a layer in front covers the ones behind).',
+      name: 'update-layer',
+      description: 'Changes a layer, as the knitter can in its window: its name, which rows it sits on, how it repeats, its spacing, its scale (each stitch knitted as a block), its turn and mirroring, whether a single motif is duplicate stitched after knitting, whether it shows, where it is in the stack (a layer in front covers the ones behind), its chart, one yarn for another, or the newer version of the library motif it came from. Or makes a copy of it. One step the knitter can undo.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -309,11 +466,16 @@ export function agentTools(store: EditorStore): AgentTool[] {
           bottomRow: { type: 'number', description: 'The knitted row its bottom falls on (row 1 is the cast-on).' },
           rows: { type: 'number', description: 'How many rows the band covers; its chart repeats up them.' },
           gap: { type: 'number', description: 'Stitches between repeats across.' },
+          gapUp: { type: 'number', description: 'Rows between repeats stacked up the piece, for a tiled layer.' },
           shift: { type: 'number', description: 'Stitches to shift the repeats (or single motif) to the right.' },
           scale: { type: 'number', description: 'How much larger to knit the chart, 1 to 4 in tenths: 1.5 makes a 14-stitch chart 21 stitches, doubling some stitches.' },
           visible: { type: 'boolean' },
           order: { type: 'string', enum: ['front', 'back', 'forward', 'backward'], description: 'Moves it in the stack: to the front or back, or one step.' },
-          upsideDown: { type: 'boolean', description: 'Turn the chart upside down: for a piece knitted top-down (a yoke from the neck), so a chart drawn bottom-up still reads the right way up when worn.' },
+          rotation: { type: 'number', enum: [0, 90, 180, 270], description: 'Degrees turned clockwise. Upside down, for a piece knitted top-down, is 180 with `mirror`.' },
+          mirror: { type: 'boolean', description: 'Flipped left to right.' },
+          afterKnitting: { type: 'boolean', description: 'For a single motif: duplicate stitched after knitting, rather than knitted in (so it makes no floats).' },
+          duplicate: { type: 'boolean', description: 'Make a copy of the layer, in the next free rows.' },
+          updateFromLibrary: { type: 'boolean', description: 'Take the newer version of the library motif this layer came from (get-chart says when there is one).' },
           recolor: {
             type: 'object',
             properties: { from: yarnRef, to: yarnRef },
@@ -321,30 +483,47 @@ export function agentTools(store: EditorStore): AgentTool[] {
           },
           chart: {
             type: 'object',
-            description: 'A new chart for the layer, as add_chart takes it: to fix a misread, or add its stitches. It keeps its place.',
+            description: 'A new chart for the layer, as add-layer takes it: to fix a misread, or add its stitches. It keeps its place.',
             properties: { rows: { type: 'array', items: { type: 'string' } }, key: { type: 'object', additionalProperties: { type: 'string' } } },
             required: ['rows', 'key'],
           },
         },
         required: ['layer'],
       },
-      execute: (input) => {
+      execute: async (input) => {
         const band = findLayer(input.layer)
         const { id } = band
         // Painted stitch by stitch, one layer stitch per chart stitch: moving or reshaping it would scramble them.
-        const fixed = ['placement', 'bottomRow', 'rows', 'gap', 'shift', 'scale', 'upsideDown', 'chart'].filter((k) => input[k] !== undefined)
+        const fixed = ['placement', 'bottomRow', 'rows', 'gap', 'gapUp', 'shift', 'scale', 'rotation', 'mirror', 'afterKnitting', 'duplicate', 'updateFromLibrary', 'chart'].filter((k) => input[k] !== undefined)
         if (band.painted && fixed.length) {
-          throw new ToolError(`"${band.name}" is painted stitch by stitch, so it can't take ${fixed.join(', ')}: it can be renamed, hidden, reordered, or recolored. Change its stitches with paint_stitches.`)
+          throw new ToolError(`"${band.name}" is painted stitch by stitch, so it can't take ${fixed.join(', ')}: it can be renamed, hidden, reordered, or recolored. Change its stitches with paint-stitches.`)
+        }
+        if (input.duplicate === true) {
+          const span = bandSpan(band, store.project.outline.height)
+          const copyId = crypto.randomUUID()
+          store.update((p) => duplicateBand(p, id, copyId, store.rowsForNewBand(span.bottom - span.top + 1)))
+          store.selectLayer(copyId)
+          const copy = findLayer(copyId)
+          return text(`Made "${copy.name}", ${placed(copy, store.project)}.${floatNote()}`)
+        }
+        // The newer version of its library motif, fetched first: taking it is part of this one step.
+        let newer: SavedMotif | undefined
+        if (input.updateFromLibrary === true) {
+          const saved = band.fromLibrary && library ? (await library.motifs()).find((m) => m.id === band.fromLibrary!.motifId) : undefined
+          if (!saved || editedAt(saved) <= band.fromLibrary!.editedAt) throw new ToolError(`"${band.name}" is already its library motif's latest version, or didn't come from one of the knitter's saved motifs.`)
+          newer = saved
         }
         store.update((p) => {
           let next = p
           const current = () => next.bands.find((b) => b.id === id)!
           if (input.name !== undefined) next = updateBand(next, id, { name: String(input.name) })
+          if (newer) next = takeLibraryVersion(next, id, newer)
           if (input.scale !== undefined) next = setScale(next, id, Number(input.scale))
-          if (input.placement !== undefined) {
-            const where = placementFrom(input.placement)
-            const span = current().rows ?? rowsFrom(1, bandTile(current()).height, next)
-            next = updateBand(next, id, where === 'tile' ? { rows: null, once: false } : { rows: span, once: where === 'single' })
+          // As the layer window does it: a single motif is centered, and duplicate stitched unless said otherwise.
+          if (input.placement !== undefined) next = setPlacement(next, id, placementFrom(input.placement), store.rowsForNewBand(bandTile(current()).height))
+          if (input.afterKnitting !== undefined) {
+            if (!current().once) throw new ToolError('Only a single motif (placement "single") is duplicate stitched after knitting.')
+            next = adjustBand(next, id, { afterKnitting: Boolean(input.afterKnitting) })
           }
           if (input.bottomRow !== undefined || input.rows !== undefined) {
             const span = bandSpan(current(), next.outline.height)
@@ -353,6 +532,7 @@ export function agentTools(store: EditorStore): AgentTool[] {
             next = updateBand(next, id, { rows: rowsFrom(bottom, height, next) })
           }
           if (input.gap !== undefined) next = adjustBand(next, id, { gapX: Math.max(0, Math.round(Number(input.gap))) })
+          if (input.gapUp !== undefined) next = adjustBand(next, id, { gapY: Math.max(0, Math.round(Number(input.gapUp))) })
           if (input.shift !== undefined) next = updateBand(next, id, { offsetX: current().offsetX + Math.round(Number(input.shift)) })
           if (input.visible !== undefined) next = updateBand(next, id, { visible: Boolean(input.visible) })
           if (input.order !== undefined) {
@@ -362,7 +542,12 @@ export function agentTools(store: EditorStore): AgentTool[] {
             if (to === undefined) throw new ToolError('`order` is front, back, forward, or backward.')
             next = reorderBand(next, id, Math.max(0, Math.min(next.bands.length - 1, to)))
           }
-          if (input.upsideDown !== undefined) next = adjustBand(next, id, input.upsideDown ? UPSIDE_DOWN : { rotation: 0, mirror: false })
+          if (input.rotation !== undefined) {
+            const rotation = Number(input.rotation)
+            if (![0, 90, 180, 270].includes(rotation)) throw new ToolError('`rotation` is 0, 90, 180, or 270.')
+            next = adjustBand(next, id, { rotation: rotation as Rotation })
+          }
+          if (input.mirror !== undefined) next = adjustBand(next, id, { mirror: Boolean(input.mirror) })
           const chart = input.chart as { rows?: unknown; key?: unknown } | undefined
           if (chart) {
             const { colors, stitches } = parseChart(chart.rows, chart.key, (ref) => yarnIndex(ref, next))
@@ -384,7 +569,7 @@ export function agentTools(store: EditorStore): AgentTool[] {
       },
     },
     {
-      name: 'render_chart',
+      name: 'render-chart',
       description:
         'A picture of the chart, to check it against the pattern it came from: the whole piece in its yarns, with row numbers up the side (row 1 at the bottom) and each stitch’s symbol (a dash for purl, / for k2tog…). Give a layer to see one repeat of its chart, larger. With `floats`, long floats are drawn out, and rows with them marked.',
       inputSchema: {
@@ -414,27 +599,9 @@ export function agentTools(store: EditorStore): AgentTool[] {
       },
     },
     {
-      name: 'show',
+      name: 'estimate-yarn',
       description:
-        'Shows or hides things over the chart, for the knitter to see what you mean: `sizing` (the piece’s widths and lengths, to drag), `floats` (every strand on the back, the long ones picked out, and the rows with them listed), `stitches` (each stitch’s symbol, and a palette to paint stitches). They can be on together.',
-      inputSchema: {
-        type: 'object',
-        properties: { sizing: { type: 'boolean' }, floats: { type: 'boolean' }, stitches: { type: 'boolean' } },
-      },
-      execute: ({ sizing, floats, stitches }) => {
-        const state = store.getState()
-        if (sizing !== undefined && Boolean(sizing) !== state.showingSizing) store.toggleSizing()
-        if (floats !== undefined && Boolean(floats) !== state.showingFloats) store.toggleFloats()
-        if (stitches !== undefined && Boolean(stitches) !== state.showingStitches) store.toggleStitches()
-        const now = store.getState()
-        const on = [now.showingSizing && 'sizing', now.showingFloats && 'floats', now.showingStitches && 'stitches'].filter(Boolean)
-        return text(on.length ? `Showing ${on.join(', ')}.` : 'Showing just the chart.')
-      },
-    },
-    {
-      name: 'estimate_yarn',
-      description:
-        `How much of each yarn the piece takes, in the size shown: stitches in it, stitches its floats pass behind, and meters (with ${Math.round(MARGIN * 100)}% extra for the swatch and weaving in). With a skein’s length and weight from set_yarns, also grams and skeins. From the gauge unless the knitter weighed a swatch (set_swatch). For another size, set_size first.`,
+        `How much of each yarn the piece takes, in the size shown: stitches in it, stitches its floats pass behind, and meters (with ${Math.round(MARGIN * 100)}% extra for the swatch and weaving in). With a skein’s length and weight from set-yarns, also grams and skeins. From the gauge unless the knitter weighed a swatch (update-chart’s swatch). For another size, show it first (update-chart’s size).`,
       inputSchema: { type: 'object', properties: {} },
       execute: () => {
         const project = store.project
@@ -454,30 +621,7 @@ export function agentTools(store: EditorStore): AgentTool[] {
       },
     },
     {
-      name: 'set_swatch',
-      description: 'Records the knitter’s swatch for the yarn estimate: its size and what it weighs, knitted in the colorwork (or plain, in one yarn). It stands in for the gauge’s guess at how much yarn a stitch takes. Every yarn in the chart needs a skein’s length and weight (set_yarns) for it to be used. Give `clear` to remove it.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          width: { type: 'number', description: 'Width in centimeters.' },
-          height: { type: 'number', description: 'Height in centimeters.' },
-          grams: { type: 'number' },
-          clear: { type: 'boolean' },
-        },
-      },
-      execute: ({ width, height, grams, clear }) => {
-        if (clear) {
-          store.update((p) => setSwatch(p, undefined))
-          return text('Swatch removed: the estimate goes by the gauge.')
-        }
-        const [w, h, g] = [Number(width), Number(height), Number(grams)]
-        if (!(w > 0 && h > 0 && g > 0)) throw new ToolError('Give the swatch’s width and height in centimeters, and its weight in grams.')
-        store.update((p) => setSwatch(p, { widthCm: w, heightCm: h, grams: g }))
-        return text(`Swatch: ${w} × ${h} cm, ${g} g.${store.estimate().fromSwatch ? ' The estimate goes by it now.' : ' Every yarn in the chart needs a skein’s length and weight before it can be used.'}`)
-      },
-    },
-    {
-      name: 'get_written_rows',
+      name: 'get-written-rows',
       description: 'The chart written out row by row, as a pattern writes it ("Rnd 12: *k2 MC, k1 CC; rep from * to end. (144 sts)"), with its yarns as MC, CC1…. Compare it with the pattern’s written instructions, where it has them, to catch a misread chart. Rows are numbered from 1 at the cast-on.',
       inputSchema: {
         type: 'object',
@@ -504,8 +648,8 @@ export function agentTools(store: EditorStore): AgentTool[] {
       },
     },
     {
-      name: 'paint_stitches',
-      description: 'Paints single stitches on the chart, for small fixes a layer can’t make: each a yarn, a stitch, or both, by row (1 at the cast-on) and stitch (1 at the right edge, where a row begins). They go in the chart’s “Drawn colorwork” layer, on top. One step the knitter can undo.',
+      name: 'paint-stitches',
+      description: 'Paints single stitches on the chart, for small fixes a layer can’t make: each a yarn, a stitch, or both, by row (1 at the cast-on) and stitch (1 at the right edge, where a row begins), or erases them. They go in the chart’s “Drawn colorwork” layer, on top. One step the knitter can undo.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -513,7 +657,13 @@ export function agentTools(store: EditorStore): AgentTool[] {
             type: 'array',
             items: {
               type: 'object',
-              properties: { row: { type: 'number' }, stitch: { type: 'number' }, yarn: yarnRef, type: { type: 'string', description: 'A stitch, as in add_chart’s key: "purl", "k2tog"…' } },
+              properties: {
+                row: { type: 'number' },
+                stitch: { type: 'number' },
+                yarn: yarnRef,
+                type: { type: 'string', description: 'A stitch, as in add-layer’s key: "purl", "k2tog"…' },
+                erase: { type: 'boolean', description: 'Clear what was painted here, so the layers below show.' },
+              },
               required: ['row', 'stitch'],
             },
           },
@@ -526,7 +676,8 @@ export function agentTools(store: EditorStore): AgentTool[] {
         const cells = (stitches as Array<Record<string, unknown>>).map((s) => {
           const [row, at] = [Math.round(Number(s.row)), Math.round(Number(s.stitch))]
           if (!(row >= 1 && row <= height && at >= 1 && at <= width)) throw new ToolError(`Row ${s.row}, stitch ${s.stitch} is off the chart (rows 1–${height}, stitches 1–${width}).`)
-          if (s.yarn === undefined && s.type === undefined) throw new ToolError('Each stitch needs a yarn, a type, or both.')
+          if (s.erase === true) return { x: width - at, y: height - row, yarn: NONE, stitch: KNIT }
+          if (s.yarn === undefined && s.type === undefined) throw new ToolError('Each stitch needs a yarn, a type, or both (or `erase`).')
           const type = s.type === undefined ? undefined : stitchNamed(String(s.type))
           if (s.type !== undefined && !type) throw new ToolError(`"${s.type}" isn't a stitch this knows.`)
           return { x: width - at, y: height - row, ...(s.yarn !== undefined && { yarn: yarnIndex(s.yarn) }), ...(type && { stitch: type.code }) }
@@ -536,21 +687,51 @@ export function agentTools(store: EditorStore): AgentTool[] {
       },
     },
     {
-      name: 'ignore_floats',
-      description: 'Sets long floats aside that the knitter’s happy with (they’ll catch them, or the yarn is grippy): the rows stop being flagged until they change. Give rows by number, or `all`.',
+      name: 'get-library',
+      description:
+        'The colorwork motifs the knitter can put on any chart: SkeinFiend’s own, and ones they saved. Each chart is written as add-layer takes it: "." is clear (the main color shows through), "M" the main color, and A, B… its contrast colors, which take on the chart’s yarns when it’s placed. Place one with add-layer’s `motif`.',
+      inputSchema: { type: 'object', properties: {} },
+      execute: async () => {
+        const saved = library ? await library.motifs() : []
+        return text(JSON.stringify({
+          mine: saved.map((m) => ({ name: m.name, chart: libraryChart(m.grid) })),
+          builtIn: MOTIF_LIBRARY.map((m) => ({ name: m.name, chart: libraryChart(m.build(0)), ...(m.spacing && { gap: m.spacing }) })),
+        }, null, 1))
+      },
+    },
+    {
+      name: 'update-library',
+      description: 'Saves a layer’s chart to the knitter’s colorwork motifs, for use on any chart (the layer is then that motif’s, and offered its later versions), or removes one they saved. SkeinFiend’s own motifs stay.',
       inputSchema: {
         type: 'object',
-        properties: { rows: { type: 'array', items: { type: 'number' } }, all: { type: 'boolean' } },
+        properties: {
+          save: { ...layerRef, description: 'A layer to save, by name or id.' },
+          name: { type: 'string', description: 'What to call it in the library. Default: the layer’s name.' },
+          remove: { type: 'string', description: 'One of the knitter’s saved motifs to remove, by name.' },
+        },
       },
-      execute: ({ rows, all }) => {
-        const height = store.project.outline.height
-        const flagged = new Map<number, ReturnType<typeof store.issues>>()
-        for (const issue of store.issues()) flagged.set(issue.y, [...(flagged.get(issue.y) ?? []), issue])
-        const wanted = all ? [...flagged.keys()] : (Array.isArray(rows) ? rows : []).map((r) => height - Math.round(Number(r)))
-        const ignoring = wanted.filter((y) => flagged.has(y))
-        if (!ignoring.length) return text('None of those rows have long floats flagged.')
-        store.update((p) => ignoring.reduce((next, y) => dismissFloats(next, y, flagged.get(y)!), p))
-        return text(`Ignoring rows ${ignoring.map((y) => height - y).sort((a, b) => a - b).join(', ')}, until they change.`)
+      execute: async ({ save, name, remove }) => {
+        const lib = needLibrary()
+        if (save !== undefined) {
+          const band = findLayer(save)
+          if (band.painted) throw new ToolError(`"${band.name}" is painted over the whole chart, not a motif: add it as a layer with add-layer first.`)
+          const drafted = toSavedMotif(scaledMotif(band), store.project.background, crypto.randomUUID(), String(name ?? band.name).trim() || band.name, Date.now())
+          // Under a name no other motif has, as when the knitter saves one.
+          const motif = { ...drafted, name: uniqueMotifName(drafted, await lib.motifs(), MOTIF_LIBRARY.map((m) => m.name)) }
+          await lib.putMotif(motif)
+          lib.changed()
+          // The layer is now the library motif's, as when the knitter saves it.
+          store.updateQuietly((p) => updateBand(p, band.id, { fromLibrary: { motifId: motif.id, editedAt: motif.savedAt } }))
+          return text(`Saved "${motif.name}" to the knitter’s colorwork motifs.`)
+        }
+        if (remove !== undefined) {
+          const found = await findMotif(remove)
+          if (!found.mine) throw new ToolError(`"${remove}" is one of SkeinFiend’s own motifs, which stay.`)
+          await lib.removeMotif(found.mine.id)
+          lib.changed()
+          return text(`Removed "${found.mine.name}" from the knitter’s colorwork motifs. Layers made from it keep their charts.`)
+        }
+        throw new ToolError('Give `save` (a layer) or `remove` (a saved motif).')
       },
     },
     {
@@ -564,7 +745,17 @@ export function agentTools(store: EditorStore): AgentTool[] {
       },
     },
     {
-      name: 'remove_layer',
+      name: 'redo',
+      description: 'Redoes the last change undone, as the knitter’s Redo button does.',
+      inputSchema: { type: 'object', properties: {} },
+      execute: () => {
+        if (!store.canRedo) return text('There’s nothing to redo.')
+        store.redo()
+        return text('Redone.')
+      },
+    },
+    {
+      name: 'remove-layer',
       description: 'Removes a layer. The knitter can undo it.',
       inputSchema: { type: 'object', properties: { layer: layerRef }, required: ['layer'] },
       execute: ({ layer }) => {
@@ -694,8 +885,48 @@ function placementFrom(value: unknown): Placement {
   return where
 }
 
+/** To the nearest millimeter. */
+const round1 = (cm: number) => Math.round(cm * 10) / 10
+
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n))
+}
+
+/**
+ * The piece's widths, added, changed, renamed, or removed as update-chart gives
+ * them: by name, in centimeters or the pattern's own rows and stitches (at the
+ * chart's gauge). At least two stay, and the top one is above the cast-on edge.
+ */
+function editWidths(schematic: SchematicPiece, project: Project, widths: unknown, remove: unknown): SchematicPiece {
+  const [perStitch, perRow] = [stitchesPerCm(project.gauge), rowsPerCm(project.gauge)]
+  const measurements: Measurement[] = [...schematic.measurements]
+  const names = () => measurements.map((m) => m.name).join(', ')
+  const find = (name: string) => measurements.findIndex((m) => m.name.toLowerCase() === name.trim().toLowerCase())
+  for (const entry of (Array.isArray(widths) ? widths : []) as Array<Record<string, unknown>>) {
+    const name = String(entry.name ?? '').trim()
+    if (!name) throw new ToolError('Each width needs a `name`.')
+    const height = entry.height !== undefined ? Number(entry.height) : entry.row !== undefined ? Number(entry.row) / perRow : undefined
+    const width = entry.width !== undefined ? Number(entry.width) : entry.stitches !== undefined ? Number(entry.stitches) / perStitch : undefined
+    if (height !== undefined && !(height >= 0)) throw new ToolError(`${name}: its height is how far up from the cast-on it is, 0 or more.`)
+    if (width !== undefined && !(width > 0)) throw new ToolError(`${name}: its width has to be more than 0.`)
+    const renamed = entry.rename === undefined ? undefined : String(entry.rename).trim() || undefined
+    const at = find(name)
+    if (at >= 0) {
+      measurements[at] = { ...measurements[at]!, ...(height !== undefined && { height }), ...(width !== undefined && { width }), ...(renamed && { name: renamed }) }
+    } else {
+      if (height === undefined || width === undefined) throw new ToolError(`No width "${name}" yet: to add it, give its height and width (or row and stitches). The widths are: ${names()}.`)
+      measurements.push({ id: crypto.randomUUID(), name: renamed ?? name, height, width })
+    }
+  }
+  for (const name of (Array.isArray(remove) ? remove : []) as unknown[]) {
+    const at = find(String(name))
+    if (at < 0) throw new ToolError(`No width "${name}". The widths are: ${names()}.`)
+    measurements.splice(at, 1)
+  }
+  if (measurements.length < 2) throw new ToolError('A piece needs at least two widths: where it starts, and where it ends.')
+  measurements.sort((a, b) => a.height - b.height)
+  if (!(measurements.at(-1)!.height > 0)) throw new ToolError('The top width needs to be above the cast-on edge.')
+  return { ...schematic, measurements }
 }
 
 /** A schematic from a pattern's stitch counts after so many rows, at its gauge. `where` says which size a problem's in. */
@@ -759,15 +990,15 @@ function placed(band: Band, project: Project): string {
     single: `once, on ${rows}`,
   }
   const upsideDown = band.rotation === 180 && band.mirror
-  return where[placementOf(band)] + (band.gapX ? `, ${band.gapX} stitches apart` : '') + (upsideDown ? ', upside down' : '') + (band.visible ? '' : ' (hidden)')
+  return where[placementOf(band)] + (band.gapX ? `, ${band.gapX} ${band.gapX === 1 ? 'stitch' : 'stitches'} apart` : '') + (upsideDown ? ', upside down' : '') + (band.visible ? '' : ' (hidden)')
 }
 
-/** Characters for a layer's chart in get_chart, after "." for the main color. */
+/** Characters for a layer's chart in get-chart, after "." for the main color. */
 // Letters only: a "-" would read as purl, whatever it stood for.
 const SYMBOLS = 'XOABCDEFGHIJKLMNPQRSTUVWYZ'
 
 /** The chart as the agent sees it. */
-function describe(project: Project, store: EditorStore) {
+function describe(project: Project, store: EditorStore, saved: readonly SavedMotif[]) {
   const { width, height } = project.outline
   const issues = store.allIssues()
   return {
@@ -778,10 +1009,16 @@ function describe(project: Project, store: EditorStore) {
       rows: height,
       worked: project.construction === 'round' ? 'in the round' : 'flat',
       gauge: `${project.gauge.stitches} stitches and ${project.gauge.rows} rows in ${project.gauge.over ?? 10} cm`,
+      // Each width as update-chart takes it, with where it falls in the knitting.
+      widths: [...layoutSchematic(project.piece, project.gauge, project.construction).placed]
+        .sort((a, b) => a.measurement.height - b.measurement.height)
+        .map(({ measurement: m, row, stitches }) => ({ name: m.name, height: `${round1(m.height)} cm`, width: `${round1(m.width)} cm`, row: row + 1, stitches })),
     },
+    floatLimit: `${project.floatRules.maxFloatCm} cm (${floatRulesOf(project).maxFloat} stitches at this gauge)`,
+    ...(project.swatch && { swatch: `${project.swatch.widthCm} × ${project.swatch.heightCm} cm, ${project.swatch.grams} g` }),
     yarns: project.yarns.map(({ id: _, ...y }, i) => ({ number: i, ...y, ...(i === project.background && { main: true }) })),
     layers: project.bands.map((band) => {
-      // A character for each yarn and stitch the chart uses, the way add_chart takes them.
+      // A character for each yarn and stitch the chart uses, the way add-layer takes them.
       const { motif, stitches } = band
       const symbols = new Map<string, string>()
       const chart = Array.from({ length: motif.height }, (_, y) =>
@@ -797,10 +1034,21 @@ function describe(project: Project, store: EditorStore) {
           return symbols.get(meaning)!
         }).join(''),
       )
+      const fromSaved = band.fromLibrary && saved.find((m) => m.id === band.fromLibrary!.motifId)
+      const fromBuiltIn = band.fromLibrary && MOTIF_LIBRARY.find((m) => `built-in:${m.id}` === band.fromLibrary!.motifId)
       return {
         id: band.id,
         name: band.name,
         where: placed(band, project),
+        ...(band.painted && { painted: 'stitch by stitch (paint-stitches)' }),
+        ...(band.once && band.afterKnitting && { afterKnitting: 'duplicate stitched after knitting' }),
+        ...(band.gapY && { gapUp: band.gapY }),
+        ...(band.rotation && { rotation: band.rotation }),
+        ...(band.mirror && { mirror: true }),
+        ...((fromSaved || fromBuiltIn) && {
+          fromLibrary: fromSaved ? fromSaved.name : fromBuiltIn!.name,
+          ...(fromSaved && editedAt(fromSaved) > band.fromLibrary!.editedAt && { newerInLibrary: true }),
+        }),
         ...(band.scale && band.scale > 1 && { scale: band.scale }),
         ...(repeatFit(band, project) && { fit: repeatFit(band, project) }),
         chart,
