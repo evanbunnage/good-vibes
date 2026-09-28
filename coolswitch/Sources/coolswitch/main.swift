@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let keyboard = KeyboardInput()
     private var timer: Timer?
     private var catalog = WindowCatalog()
+    private var desktops: [CGWindowID: String] = [:]
     private let work = WindowWork()
     private lazy var switcher = SwitchController(work: work)
     private var gesture = SwitchGesture()
@@ -78,9 +79,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if isPreview {
             let app = NSRunningApplication.current
             let element = AXElement.application(app.processIdentifier)
-            panel.show(["Project notes", "Terminal — CoolSwitch", "Design document"].map {
-                WindowEntry(element: element, app: app, title: $0, minimized: false)
-            }, selected: 1)
+            panel.show(["Project notes", "Terminal — CoolSwitch", "Design document"].enumerated().map {
+                WindowEntry(element: element, app: app, title: $1, minimized: false, windowID: CGWindowID($0 + 1))
+            }, selected: 1, desktops: [1: "1", 2: "2", 3: "2"])
             return
         }
         LoginItem.configureOnFirstInstalledLaunch()
@@ -221,6 +222,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if case .success(let entries) = result {
                 self.catalog.receive(entries, revision: revision)
                 if let focused { self.catalog.remember(focused) }
+                self.refreshDesktops(entries)
             }
         }
     }
@@ -362,13 +364,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         panel.prepare(count: entries.count)
         switcher.begin(entries: entries, backwards: backwards, screenSize: panel.availableSize)
+        // Windows can change desktop without any app or Space notification (AeroSpace
+        // moves them itself), so look again now and correct the open panel.
+        refreshDesktops(entries)
+    }
+
+    private func refreshDesktops(_ entries: [WindowEntry]) {
+        work.desktops(for: entries) { [weak self] labels in
+            guard let self else { return }
+            self.desktops = labels
+            if self.switcher.visibleSession != nil { self.panel.setDesktops(labels) }
+        }
     }
 
     private func render() {
         if let session = switcher.visibleSession {
             if renderedToken === switcher.state.token { panel.highlight(session.selection) }
             else {
-                panel.show(session.entries, selected: session.selection)
+                panel.show(session.entries, selected: session.selection, desktops: desktops)
                 renderedToken = switcher.state.token
             }
         } else {

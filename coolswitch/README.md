@@ -24,6 +24,8 @@ CoolSwitch remains a more lightweight alternative for users who simply want the 
 
 Supports arrow key navigation, native tabs, minimized windows and apps with no open windows.
 
+CoolSwitch will detect what desktop your windows are on and display that. If you use [AeroSpace](https://github.com/nikitabobko/AeroSpace) to manage windows, it will show the AeroSpace workspace instead.
+
 **Settings:** reopen CoolSwitch to view the settings page.
 
 ## Updating

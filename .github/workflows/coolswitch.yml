@@ -142,7 +142,7 @@ jobs:
           # Keep a fixed release whose download link always serves the newest CoolSwitch.
           gh release delete coolswitch-latest --cleanup-tag --yes 2>/dev/null || true
           gh release create coolswitch-latest dist/CoolSwitch.zip --target "$GITHUB_SHA" --latest=false \
-            --title "CoolSwitch $VERSION" --notes "The newest CoolSwitch. This release is replaced each time CoolSwitch ships; see coolswitch-v$VERSION for its notes."
+            --title "CoolSwitch $VERSION" --notes "Release notes: [CoolSwitch $VERSION](https://github.com/$GITHUB_REPOSITORY/releases/tag/coolswitch-v$VERSION)"
           echo "[Download CoolSwitch $VERSION](https://github.com/$GITHUB_REPOSITORY/releases/tag/coolswitch-v$VERSION)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Clean up signing

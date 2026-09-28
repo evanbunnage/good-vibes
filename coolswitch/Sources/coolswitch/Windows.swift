@@ -7,21 +7,25 @@ struct WindowEntry: Sendable {
     let title: String
     let minimized: Bool
     let tab: AppTab?
+    /// The window server's ID, used to look up which desktop the window is on.
+    let windowID: CGWindowID?
 
-    init(element: AXElement, app: NSRunningApplication, title: String, minimized: Bool) {
+    init(element: AXElement, app: NSRunningApplication, title: String, minimized: Bool, windowID: CGWindowID? = nil) {
         self.element = element
         self.app = app
         self.title = title
         self.minimized = minimized
         self.tab = nil
+        self.windowID = windowID
     }
 
-    init(tab: AppTab, app: NSRunningApplication, minimized: Bool = false) {
+    init(tab: AppTab, app: NSRunningApplication, minimized: Bool = false, windowID: CGWindowID? = nil) {
         self.element = nil
         self.app = app
         self.title = tab.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Untitled tab" : tab.title
         self.minimized = minimized
         self.tab = tab
+        self.windowID = windowID
     }
 
     init(app: NSRunningApplication) {
@@ -30,6 +34,7 @@ struct WindowEntry: Sendable {
         self.title = app.localizedName ?? "Application"
         self.minimized = false
         self.tab = nil
+        self.windowID = nil
     }
 
     var isApplicationOnly: Bool { element == nil && tab == nil }

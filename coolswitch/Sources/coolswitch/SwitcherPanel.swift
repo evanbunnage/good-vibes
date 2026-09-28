@@ -8,6 +8,7 @@ final class SwitcherPanel: NSPanel {
     private let grid = SwitcherGridView()
     private let scroll = NSScrollView()
     private var rows: [NSView] = []
+    private var desktopLabels: [(entry: WindowEntry, label: NSTextField)] = []
     private var layout = SwitcherLayout(count: 0, screenSize: CGSize(width: 800, height: 600))
     private var screenFrame = CGRect.zero
 
@@ -64,10 +65,11 @@ final class SwitcherPanel: NSPanel {
         ])
     }
 
-    func show(_ entries: [WindowEntry], selected: Int) {
+    func show(_ entries: [WindowEntry], selected: Int, desktops: [CGWindowID: String] = [:]) {
         if layout.count != entries.count || screenFrame == .zero { prepare(count: entries.count) }
         grid.subviews.forEach { $0.removeFromSuperview() }
         rows = []
+        desktopLabels = []
         scroll.hasVerticalScroller = layout.scrolls
         grid.setFrameSize(layout.documentSize)
         for (index, entry) in entries.enumerated() {
@@ -80,13 +82,21 @@ final class SwitcherPanel: NSPanel {
             title.font = .systemFont(ofSize: 15.6, weight: .medium)
             title.lineBreakMode = .byTruncatingTail
             title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            for view in [icon, title] { view.translatesAutoresizingMaskIntoConstraints = false; row.addSubview(view) }
+            let desktop = NSTextField(labelWithString: "")
+            desktop.font = .monospacedDigitSystemFont(ofSize: 13, weight: .medium)
+            desktop.textColor = .secondaryLabelColor
+            desktop.setContentHuggingPriority(.required, for: .horizontal)
+            desktop.setContentCompressionResistancePriority(.required, for: .horizontal)
+            desktopLabels.append((entry, desktop))
+            for view in [icon, title, desktop] { view.translatesAutoresizingMaskIntoConstraints = false; row.addSubview(view) }
             grid.addSubview(row)
             NSLayoutConstraint.activate([
                 icon.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 9), icon.centerYAnchor.constraint(equalTo: row.centerYAnchor, constant: entry.isApplicationOnly ? -3 : 0),
                 icon.widthAnchor.constraint(equalToConstant: 30), icon.heightAnchor.constraint(equalToConstant: 30),
-                title.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -10),
-                title.centerYAnchor.constraint(equalTo: row.centerYAnchor)
+                title.trailingAnchor.constraint(equalTo: desktop.leadingAnchor, constant: -10),
+                title.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+                desktop.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -12),
+                desktop.firstBaselineAnchor.constraint(equalTo: title.firstBaselineAnchor)
             ])
             title.setAccessibilityLabel(entry.subtitle.isEmpty ? entry.title : entry.title + ", " + entry.subtitle)
             title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 9).isActive = true
@@ -131,9 +141,22 @@ final class SwitcherPanel: NSPanel {
                         width: layout.panelSize.width, height: layout.panelSize.height), display: true)
         scroll.contentView.scroll(to: .zero)
         scroll.reflectScrolledClipView(scroll.contentView)
-        contentView?.layoutSubtreeIfNeeded()
+        setDesktops(desktops)
         highlight(selected)
         orderFrontRegardless()
+    }
+
+    /// Label each window with its desktop, unless every window is on the same one.
+    /// Minimized windows show a minus instead, since they aren't on any desktop.
+    func setDesktops(_ desktops: [CGWindowID: String]) {
+        let names = desktopLabels.map { $0.entry.minimized ? nil : $0.entry.windowID.flatMap { desktops[$0] } }
+        let useful = Set(names.compactMap { $0 }).count > 1
+        for ((entry, label), name) in zip(desktopLabels, names) {
+            label.stringValue = entry.minimized ? "\u{2212}" : useful ? name ?? "" : ""
+            // The title already says "Minimized" to VoiceOver.
+            label.setAccessibilityElement(!entry.minimized)
+        }
+        contentView?.layoutSubtreeIfNeeded()
     }
 
     func highlight(_ selected: Int) {
@@ -146,5 +169,6 @@ final class SwitcherPanel: NSPanel {
     func clearEntries() {
         grid.subviews.forEach { $0.removeFromSuperview() }
         rows.removeAll()
+        desktopLabels.removeAll()
     }
 }

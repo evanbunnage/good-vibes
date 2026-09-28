@@ -50,7 +50,7 @@ extension WindowStore {
                     enriched.append(entry)
                     continue
                 }
-                enriched += tabs.map { WindowEntry(tab: $0, app: entry.app, minimized: entry.minimized) }
+                enriched += tabs.map { WindowEntry(tab: $0, app: entry.app, minimized: entry.minimized, windowID: entry.windowID) }
             } catch {
                 try access.check()
                 enriched.append(entry)
@@ -66,7 +66,8 @@ extension WindowStore {
         guard subrole == kAXStandardWindowSubrole || subrole == kAXDialogSubrole else { return nil }
         let title = (values[1] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let minimized = values[2] as? Bool ?? false
-        return WindowEntry(element: window, app: app, title: title.isEmpty ? "Untitled window" : title, minimized: minimized)
+        return WindowEntry(element: window, app: app, title: title.isEmpty ? "Untitled window" : title, minimized: minimized,
+                           windowID: Desktops.windowID(window))
     }
 
     static func focusedIdentity(in entries: [WindowEntry], app: NSRunningApplication?,

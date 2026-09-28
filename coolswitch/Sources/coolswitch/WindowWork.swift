@@ -6,6 +6,7 @@ import AppKit
 final class WindowWork: SwitchWorking {
     private let discoveryQueue = DispatchQueue(label: "window-discovery", qos: .utility)
     private let focusQueue = DispatchQueue(label: "window-focus", qos: .userInitiated)
+    private let desktopQueue = DispatchQueue(label: "desktop-lookup", qos: .userInitiated)
     private let client: any AccessibilityClient
     init(client: any AccessibilityClient = NativeAccessibilityClient()) { self.client = client }
 
@@ -51,6 +52,17 @@ final class WindowWork: SwitchWorking {
             WindowFocus(client: client).focus(entry, token: token, queue: queue) { result in
                 DispatchQueue.main.async { completion(result) }
             }
+        }
+    }
+
+    /// Desktop labels by window ID. Kept apart from discovery so a switch can
+    /// refresh them without rereading every window.
+    func desktops(for entries: [WindowEntry],
+                  completion: @escaping @MainActor @Sendable ([CGWindowID: String]) -> Void) {
+        let windows = entries.compactMap(\.windowID)
+        desktopQueue.async {
+            let labels = Desktops.labels(for: windows)
+            DispatchQueue.main.async { completion(labels) }
         }
     }
 }
