@@ -203,6 +203,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window?.makeKeyAndOrderFront(nil)
         // Coming back from System Settings, macOS may not activate us; still show on top.
         window?.orderFrontRegardless()
+        // macOS 14+ declines activation while another app is active, but honors it through
+        // Accessibility once we have access. Off the main thread, which has to answer it.
+        guard AXIsProcessTrusted(), !NSApp.isActive else { return }
+        let app = AXUIElementCreateApplication(ProcessInfo.processInfo.processIdentifier)
+        DispatchQueue.global(qos: .userInitiated).async {
+            AXUIElementSetAttributeValue(app, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+        }
     }
 
     func windowWillClose(_ notification: Notification) {

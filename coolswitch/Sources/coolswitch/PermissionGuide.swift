@@ -14,10 +14,16 @@ final class PermissionGuide {
     /// System Settings' sidebar width; the panel spans the content column to its right.
     private static let sidebarWidth: CGFloat = 230
     private static let height: CGFloat = 116
+    /// System Settings shows its window before the Accessibility list loads, and we can't
+    /// see the list without the access we're asking for. So the first time, wait until the
+    /// window has held still this long, which in practice means the pane has rendered.
+    private static let settleTime: TimeInterval = 1
     private var panel: NSPanel?
     private var timer: Timer?
     private var sawSettings = false
     private var source: CGRect?
+    private var presented = false
+    private var settling: (frame: CGRect, since: TimeInterval)?
 
     var isActive: Bool { timer != nil }
 
@@ -26,6 +32,8 @@ final class PermissionGuide {
     func start(from source: CGRect?) {
         guard timer == nil else { return }
         sawSettings = false
+        presented = false
+        settling = nil
         self.source = source
         let timer = Timer(timeInterval: 0.15, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.follow() }
@@ -50,6 +58,15 @@ final class PermissionGuide {
         guard let settings, settings.isActive, let window = Self.mainWindowFrame(of: settings.processIdentifier) else {
             panel?.orderOut(nil)
             return
+        }
+        if !presented {
+            let now = ProcessInfo.processInfo.systemUptime
+            guard let settling, settling.frame == window else {
+                settling = (window, now)
+                return
+            }
+            guard now - settling.since >= Self.settleTime else { return }
+            presented = true
         }
         let target = Self.targetFrame(in: window)
         if let panel, panel.isVisible {
@@ -76,7 +93,7 @@ final class PermissionGuide {
         panel.alphaValue = 0
         panel.orderFrontRegardless()
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.45
+            context.duration = 0.74
             context.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.25, 1)
             panel.animator().setFrame(target, display: true)
             panel.animator().alphaValue = 1
