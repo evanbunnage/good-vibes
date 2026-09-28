@@ -16,8 +16,8 @@ const expandedPreference = createPreference<boolean>('skeinfiend.motifsExpanded'
  * designer's own, then the traditional ones. Click one to add it in free rows,
  * or drag it onto the chart where it should go.
  *
- * One row, scrolled sideways as any row is, or, with the
- * arrow at its end, a grid a few rows tall that scrolls up and down.
+ * The first row of them, or, with the arrow at its end, all of them: a grid a
+ * few rows tall that scrolls up and down. Spaced the same either way.
  */
 export function MotifStrip() {
   const { builtIn, saved, add } = useAddLayer()
@@ -34,24 +34,20 @@ export function MotifStrip() {
 
   const expanded = expandedPreference.use()
   const strip = useRef<HTMLDivElement>(null)
-  // The arrow's only there when there's more than one row's worth.
+  // The arrow's only there when there's more than one row's worth; folded, it says how many more.
   const [overflows, setOverflows] = useState(false)
+  const [hidden, setHidden] = useState(0)
   // Measured again when the strip opens or closes, or gains or loses tiles.
   // biome-ignore lint/correctness/useExhaustiveDependencies: they're triggers, not read inside
   useEffect(() => {
     const el = strip.current
     if (!el) return
     const measure = () => {
-      // As a row, spaced so the last tile in view is cut in half: plainly more to scroll to.
-      el.style.columnGap = ''
-      const tile = (el.firstElementChild as HTMLElement | null)?.offsetWidth ?? 0
-      const minGap = parseFloat(getComputedStyle(el).columnGap) || 0
-      const width = el.clientWidth - parseFloat(getComputedStyle(el).paddingInlineStart) * 2
-      const whole = Math.floor((width - tile / 2 + minGap) / (tile + minGap))
-      if (!expandedPreference.get() && tile && whole > 0 && el.children.length > whole + 1) {
-        el.style.columnGap = `${(width - (whole + 0.5) * tile) / whole}px`
-      }
-      setOverflows(el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1 || expandedPreference.get())
+      const tiles = [...el.children] as HTMLElement[]
+      const firstRow = tiles[0]?.offsetTop ?? 0
+      const more = tiles.filter((t) => t.offsetTop > firstRow).length
+      setHidden(more)
+      setOverflows(more > 0)
     }
     const observer = new ResizeObserver(measure)
     observer.observe(el)
@@ -72,6 +68,7 @@ export function MotifStrip() {
     {overflows && (
       <button type="button" className={styles.stripToggle} aria-expanded={expanded} aria-label={expanded ? 'Show colorwork motifs in a row' : 'Show all colorwork motifs'}
         title={expanded ? 'Fewer' : 'More'} onClick={() => expandedPreference.set(!expanded)}>
+        {!expanded && <span className={styles.stripMore}>+{hidden}</span>}
         <Icon name={expanded ? 'chevronUp' : 'chevronDown'} />
       </button>
     )}

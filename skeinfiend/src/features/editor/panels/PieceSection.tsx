@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { schematicOf, setConstruction, setGauge } from '@/domain/edits'
 import type { Gauge } from '@/domain/gauge'
 import { possessive, type SchematicPiece } from '@/domain/pieces'
@@ -25,11 +24,9 @@ export function PieceSection() {
   const { width, height } = project.outline
   const edit = (gauge: Gauge) => (p: Project) => setGauge(p, gauge)
   const { credit } = project.piece
-  // Taken once, when the editor opens: it doesn't fold itself away as the window's resized.
-  const [roomy] = useState(() => typeof window === 'undefined' || window.innerHeight >= 900)
   return (
-    // Open, unless the window is short: then the colorwork gets the room, and this is a click away.
-    <Section title="Gauge & size" defaultOpen={roomy}>
+    // Folded away: set once, when the chart's started, and a click away after that.
+    <Section title="Gauge & size" defaultOpen={false}>
       <GaugeFields gauge={project.gauge} onPreview={(gauge) => store.preview(edit(gauge))}
         onChange={(gauge) => store.update(edit(gauge))} onPreviewEnd={() => store.cancelPreview()} />
       <div className={styles.pieceRow}>

@@ -444,7 +444,6 @@
   color: var(--ink-muted);
 }
 
-/* Motifs to add, in one scrolling row above the layers: small tiles to click or drag. */
 /* The motifs, and the arrow that lays them out as a grid. */
 .stripArea {
   display: grid;
@@ -453,26 +452,29 @@
   gap: 0.2rem;
 }
 
+/* Motifs to add, above the layers: small tiles to click or drag. Folded, the first row of them; the rest wrap out of sight. */
 .strip {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.35rem;
   margin-inline: -0.1rem;
-  padding: 0.1rem 0.1rem 0.45rem;
-  overflow-x: auto;
-  scrollbar-width: thin;
+  padding: 0.1rem;
+  max-block-size: calc(2.6rem + 0.2rem);
+  overflow: hidden;
 
-  /* A grid of them, four rows tall, then scrolling: half the fifth showing, to show there's more. */
+  /* All of them, four rows tall, then scrolling: half the fifth showing, to show there's more. */
   &[data-expanded] {
-    flex-wrap: wrap;
     max-block-size: calc(4.5 * 2.6rem + 4 * 0.35rem + 0.1rem);
-    overflow-x: hidden;
     overflow-y: auto;
+    scrollbar-width: thin;
   }
 }
 
 .stripToggle {
   display: grid;
   place-items: center;
+  align-content: center;
+  row-gap: 0.15rem;
   inline-size: 1.4rem;
   block-size: 2.6rem;
   margin-block-start: 0.1rem;
@@ -485,6 +487,13 @@
 
   &:hover { background: var(--surface-sunken); color: var(--ink); }
   & svg { inline-size: 1rem; block-size: 1rem; stroke-width: 1.6; }
+}
+
+/* How many more there are, over the arrow. */
+.stripMore {
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 .stripTile {

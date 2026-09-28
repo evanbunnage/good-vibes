@@ -48,7 +48,10 @@ export function NewProjectDialog({ dialog }: { dialog: React.RefObject<HTMLDialo
           <GaugeFields gauge={gauge} onChange={setGauge} />
         </fieldset>
 
-        {!valid && <p className={styles.sizeNote}>Check the gauge.</p>}
+        {/* In the same place, so the dialog keeps its height: what's wrong with the gauge, or that it can wait. */}
+        {valid
+          ? <p className={styles.gaugeNote}>The gauge can be changed later.</p>
+          : <p className={styles.sizeNote}>Check the gauge.</p>}
 
         <div className={ui.actions}>
           <button type="button" className={`${ui.button} ${styles.example}`} data-variant="ghost" disabled={addProject.isPending} onClick={() => runAction(openExample)}>

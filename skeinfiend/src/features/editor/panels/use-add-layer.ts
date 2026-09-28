@@ -41,7 +41,8 @@ export function useAddLayer() {
   const builtIn: MotifChoice[] = MOTIF_LIBRARY.map((m) => ({
     key: `built-in:${m.id}`, name: m.name, motif: m.build(contrast), spacing: m.spacing, fromLibrary: { motifId: `built-in:${m.id}`, editedAt: 0 },
   }))
-  const saved: MotifChoice[] = savedMotifs.map((m) => ({
+  // The designer's own, newest first: one just saved is beside the blank one, not out of sight.
+  const saved: MotifChoice[] = [...savedMotifs].sort((a, b) => b.savedAt - a.savedAt).map((m) => ({
     key: `saved:${m.id}`,
     name: m.name,
     motif: motifInYarns(m.grid, project.yarns.length, project.background, contrast),
