@@ -61,6 +61,9 @@ jobs:
       VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          # Release notes list commits since the previous CoolSwitch tag.
+          fetch-depth: 0
 
       - name: Check version
         env:
@@ -136,12 +139,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Left to itself, GitHub may diff against coolswitch-latest or another project's tag.
+          # GitHub's generated notes compare the whole monorepo. List only CoolSwitch's commits.
           previous=$(gh release list --limit 100 --json tagName --jq '.[].tagName' \
             | grep '^coolswitch-v' | sort -V | tail -1 || true)
+          notes="$RUNNER_TEMP/notes.md"
+          if [[ -n "$previous" ]]; then
+            git log --format='- %s' "$previous..$GITHUB_SHA" -- . | sed 's/^- CoolSwitch: /- /' > "$notes"
+          else
+            : > "$notes"
+          fi
           gh release create "coolswitch-v$VERSION" dist/CoolSwitch.zip \
-            --target "$GITHUB_SHA" --title "CoolSwitch $VERSION" --generate-notes --latest=false \
-            ${previous:+--notes-start-tag "$previous"}
+            --target "$GITHUB_SHA" --title "CoolSwitch $VERSION" --notes-file "$notes" --latest=false
           # Other projects share this repo's releases, so GitHub's "latest" isn't ours.
           # Keep a fixed release whose download link always serves the newest CoolSwitch.
           gh release delete coolswitch-latest --cleanup-tag --yes 2>/dev/null || true
