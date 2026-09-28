@@ -136,13 +136,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Left to itself, GitHub may diff against coolswitch-latest or another project's tag.
+          previous=$(gh release list --limit 100 --json tagName --jq '.[].tagName' \
+            | grep '^coolswitch-v' | sort -V | tail -1 || true)
           gh release create "coolswitch-v$VERSION" dist/CoolSwitch.zip \
-            --target "$GITHUB_SHA" --title "CoolSwitch $VERSION" --generate-notes --latest=false
+            --target "$GITHUB_SHA" --title "CoolSwitch $VERSION" --generate-notes --latest=false \
+            ${previous:+--notes-start-tag "$previous"}
           # Other projects share this repo's releases, so GitHub's "latest" isn't ours.
           # Keep a fixed release whose download link always serves the newest CoolSwitch.
           gh release delete coolswitch-latest --cleanup-tag --yes 2>/dev/null || true
           gh release create coolswitch-latest dist/CoolSwitch.zip --target "$GITHUB_SHA" --latest=false \
-            --title "CoolSwitch $VERSION" --notes "Release notes: [CoolSwitch $VERSION](https://github.com/$GITHUB_REPOSITORY/releases/tag/coolswitch-v$VERSION)"
+            --title "CoolSwitch (latest)" --notes "Release notes: [CoolSwitch $VERSION](https://github.com/$GITHUB_REPOSITORY/releases/tag/coolswitch-v$VERSION)"
           echo "[Download CoolSwitch $VERSION](https://github.com/$GITHUB_REPOSITORY/releases/tag/coolswitch-v$VERSION)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Clean up signing
