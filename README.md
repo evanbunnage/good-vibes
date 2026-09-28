@@ -2,7 +2,7 @@
 
 A collection of my vibe coded projects that are polished enough to release.
 
-Although used often, these projects are not tested outside of the latest version of macOS.
+Although used often, these projects are not tested outside of the latest version of macOS/Chrome/Safari.
 
 All `README`s are guaranteed organic, pasture-raised human writing.
 
