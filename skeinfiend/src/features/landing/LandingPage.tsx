@@ -1,11 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link, useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate, useRouteContext } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useAddProject, projectListQuery, useRepository } from '@/data/projects'
 import { createExampleProject } from '@/domain/example'
 import { createProject } from '@/domain/project'
+import { isReturning } from '@/data/auth'
 import { lastChart } from '@/data/last-chart'
 import { AccountMenu } from '@/features/editor/AccountMenu'
+import { offerMotifHelper, startedChart } from '@/features/editor/panels/motif-helper-state'
 import { ChartPreview } from '@/render/ChartPreview'
 import { Logo } from '@/ui/Logo'
 import { Wordmark } from '@/ui/Wordmark'
@@ -24,13 +26,14 @@ export function LandingPage() {
   const { data: charts = [] } = useQuery(projectListQuery(repository))
   const addProject = useAddProject()
   const navigate = useNavigate()
+  const { user } = useRouteContext({ from: '__root__' })
   // The chart being made, on its way to opening: never offered to continue as it goes.
   const [starting, setStarting] = useState<string | null>(null)
   const others = charts.filter((c) => c.id !== starting)
   // The chart opened last in this browser, or else the one edited most recently.
   const recent = others.find((c) => c.id === lastChart()) ?? others[0]
 
-  async function start(project: ReturnType<typeof createProject>) {
+  async function start(project: ReturnType<typeof createProject>, example = false) {
     setStarting(project.id)
     try {
       await addProject.mutateAsync(project)
@@ -38,6 +41,9 @@ export function LandingPage() {
       setStarting(null)
       throw error
     }
+    // The drag-a-motif helper: always on an example; on a chart of their own, if it's new to them.
+    if (example) offerMotifHelper(project.id)
+    else startedChart(project.id, { signedIn: Boolean(user), otherCharts: charts.length })
     void navigate({ to: '/p/$projectId', params: { projectId: project.id } })
   }
 
@@ -59,7 +65,7 @@ export function LandingPage() {
             onClick={() => runAction(() => start(createProject({ id: crypto.randomUUID(), name: 'New chart', now: Date.now() })))}>
             Create a chart
           </button>
-          <button type="button" className={ui.button} disabled={starting !== null} onClick={() => runAction(() => start(createExampleProject(crypto.randomUUID(), Date.now())))}>
+          <button type="button" className={ui.button} disabled={starting !== null} onClick={() => runAction(() => start(createExampleProject(crypto.randomUUID(), Date.now()), true))}>
             Open an example
           </button>
         </div>
@@ -72,6 +78,12 @@ export function LandingPage() {
               <ChartPreview grid={recent.preview} colors={recent.colors} aspect={recent.aspect} fill />
             </span>
             <span className={styles.continueText}>Continue “{recent.name}”</span>
+          </Link>
+        )}
+        {/* Signed out, their charts are only in this browser: as in the editor, the way to keep them. */}
+        {recent && !user && (
+          <Link to="/sign-in" search={{ redirect: '/' }} className={styles.signInToSave}>
+            {isReturning() ? 'Sign in to save' : 'Create an account to save'}
           </Link>
         )}
         </div>

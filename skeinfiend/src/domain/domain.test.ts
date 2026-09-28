@@ -8,6 +8,7 @@ import { MOTIF_LIBRARY } from './motifs'
 import { readsRightToLeft, rowNumber, rowPattern, rowRuns, stitchNumber } from './numbering'
 import { isDark, remapAfterRemoval, yarnCounts } from './palette'
 import { composeChart, createProject } from './project'
+import { uniqueName } from './names'
 import { MAIN, motifInYarns, toSavedMotif, uniqueMotifName } from './saved-motifs'
 import { BUILT_IN_TEMPLATES, buildOutline, builtInTemplate, describeShaping, layoutSchematic, rectangle, shapingSteps, STITCH, stitchCount, type SchematicPiece } from './pieces'
 import { createBand } from './bands'
@@ -351,5 +352,13 @@ describe('uniqueMotifName', () => {
 
   it('lets a motif keep its own name', () => {
     expect(uniqueMotifName({ id: 'a', name: 'Tree' }, saved, [])).toBe('Tree')
+  })
+})
+
+describe('uniqueName', () => {
+  it('numbers a name that is taken, ignoring case, and falls back when blank', () => {
+    expect(uniqueName('Snowflake hat', ['Snowflake hat', 'snowflake hat 2'], 'New chart')).toBe('Snowflake hat 3')
+    expect(uniqueName('Mittens', ['Snowflake hat'], 'New chart')).toBe('Mittens')
+    expect(uniqueName('  ', ['New chart'], 'New chart')).toBe('New chart 2')
   })
 })

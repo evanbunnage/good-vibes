@@ -23,13 +23,28 @@ export const motifPreview = {
     }, () => previewing),
 }
 
+let editing: string | null = null
+const editingListeners = new Set<() => void>()
+
 /**
- * The layer window's place over the chart, remembered in this browser.
- * Closing it is remembered too, so it stays out of the way; a layer's pencil
- * opens it again. Its position is kept whether it's open or not.
+ * The layer window: which layer it's open on, and its place over the chart,
+ * remembered in this browser. It opens only to edit: a motif dragged onto the
+ * chart, or Edit (a motif's, or a layer's pencil). Selecting a layer, or
+ * adding one, doesn't open it. For this page only.
  */
 export const layerWindow = {
-  open: createPreference<boolean>('skeinfiend.motifWindowOpen', true),
+  editing: {
+    get: () => editing,
+    set(id: string | null) {
+      if (id === editing) return
+      editing = id
+      for (const listener of editingListeners) listener()
+    },
+    use: () => useSyncExternalStore((l) => {
+      editingListeners.add(l)
+      return () => editingListeners.delete(l)
+    }, () => editing),
+  },
   /**
    * From the chart area's right edge, in pixels, so it stays put as the panel
    * beside it resizes. It starts at the bottom right, clear of the chart's top

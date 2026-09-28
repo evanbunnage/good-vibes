@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDeleteMotif, useSaveMotif } from '@/data/library'
-import { MOTIF_LIBRARY } from '@/domain/motifs'
-import type { SavedMotif } from '@/domain/saved-motifs'
-import { MotifEditor } from '@/features/projects/MotifEditor'
+import { usePhone, useTouch } from '@/ui/use-phone'
 import { bandStitchTile, bandSpan, bandTile, MAX_SCALE, motifPoint, SCALE_STEP, placementOf, scaleOf, scaledMotif, type Band, type Placement } from '@/domain/bands'
 import { adjustBand, duplicateBand, renameBand, resizeBandMotif, setPlacement, setScale, updateBand } from '@/domain/edits'
 import { cellAspect } from '@/domain/gauge'
@@ -14,7 +12,6 @@ import type { EditorState, EditorStore } from '@/editor/store'
 import { ChartCanvas } from '@/render/ChartCanvas'
 import { DeleteButton } from '@/ui/DeleteButton'
 import { FloatingWindow } from '@/ui/FloatingWindow'
-import { usePhone } from '@/ui/use-phone'
 import { Icon } from '@/ui/Icon'
 import { NumberField } from '@/ui/NumberField'
 import { SliderField } from '@/ui/SliderField'
@@ -31,33 +28,32 @@ const REPEATS: ReadonlyArray<readonly [Placement, string]> = [['band', 'Row'], [
 
 const selectBand = (_: EditorState, store: EditorStore) => store.selectedBand()
 
-/**
- * Everything about the selected layer, in a window over the chart: its motif
- * to draw on (every repeat on the chart follows), its size, and how it's
- * placed. Drag it by its title to move it; its position, and whether it's
- * closed, are remembered.
- */
 const selectSelectedId = (s: EditorState) => s.selectedBandId
-const selectPainted = (_: EditorState, store: EditorStore) => store.selectedBand()?.painted ?? false
+
+/**
+ * Everything about the layer being edited, in a window over the chart: its
+ * motif to draw on (every repeat on the chart follows), its size, and how
+ * it's placed. It opens to edit (a motif dragged on, or Edit), not on
+ * selecting a layer. Drag it by its title to move it; its position is remembered.
+ */
 
 export function LayerWindow() {
   const band = useEditor(selectBand)
-  const open = layerWindow.open.use()
+  const editingId = layerWindow.editing.use()
   const previewing = motifPreview.use()
-  // Selecting a motif, in the list or on the chart, opens its window (closed, it stays closed until the next).
   const selectedId = useEditor(selectSelectedId)
-  const painted = useEditor(selectPainted)
-  // Only when the selection changes: not as the layer is edited.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `painted` is read, not watched
   useEffect(() => {
-    // A layer selected puts away a motif being looked at.
+    // A layer selected puts away a motif being looked at; another layer selected closes the window on this one.
     if (selectedId) motifPreview.set(null)
-    if (selectedId && !painted) layerWindow.open.set(true)
+    if (layerWindow.editing.get() !== selectedId) layerWindow.editing.set(null)
   }, [selectedId])
-  useEffect(() => () => motifPreview.set(null), [])
+  useEffect(() => () => {
+    motifPreview.set(null)
+    layerWindow.editing.set(null)
+  }, [])
   if (previewing) return <PreviewWindow motifKey={previewing} />
   // Painted stitches are painted on the chart itself: there's no motif to open.
-  return band && open && !band.painted ? <Window band={band} /> : null
+  return band && editingId === band.id && !band.painted ? <Window band={band} /> : null
 }
 
 /**
@@ -70,30 +66,27 @@ function PreviewWindow({ motifKey }: { motifKey: string }) {
   const { builtIn, saved, add } = useAddLayer()
   const saveMotif = useSaveMotif()
   const deleteMotif = useDeleteMotif()
-  const [editing, setEditing] = useState(false)
-  const phone = usePhone()
   const choice = [...saved, ...builtIn].find((c) => c.key === motifKey)
   if (!choice) return null
   const colors = project.yarns.map((y) => y.hex)
-  // A classic is edited as a copy, saved as the designer's own; theirs are edited as they are.
-  const classic = MOTIF_LIBRARY.find((m) => `built-in:${m.id}` === choice.key)
-  const asSaved: SavedMotif = choice.saved ?? { id: crypto.randomUUID(), name: choice.name, grid: classic!.build(0), savedAt: Date.now() }
   return (
     <FloatingWindow name={choice.name} nameLabel="Colorwork motif" position={layerWindow.position} onClose={() => motifPreview.set(null)}>
       <div className={styles.preview} style={{ background: project.yarns[project.background]?.hex }}>
         <ChartPreview grid={choice.motif} colors={colors} fill />
       </div>
-      {/* On a phone the chart can't take a drag: just adding it. */}
-      <p className={styles.previewNote}>{choice.motif.width} × {choice.motif.height} · Not on the chart yet.{phone ? '' : ' Add it, or drag it onto the rows it should go on.'}</p>
       <button type="button" className={ui.button} data-variant="primary" onClick={() => {
         motifPreview.set(null)
         add(choice.key)
       }}>
         <Icon name="plus" /> Add to chart
       </button>
-      {/* The colorwork motif itself, in the library: drawn again, copied, or deleted (charts keep their copies). */}
+      {/* Edited where it'll be: on the chart, in this chart's yarns, as a layer (saved to the library from
+          there, if they like). The designer's own can be copied, or deleted (charts keep their copies). */}
       <div className={styles.previewActions}>
-          <button type="button" onClick={() => setEditing(true)}><Icon name="pencil" /> Edit</button>
+          <button type="button" onClick={() => {
+            motifPreview.set(null)
+            add(choice.key, undefined, { edit: true })
+          }}><Icon name="pencil" /> Edit</button>
           {choice.saved && (
             <>
               <button type="button" onClick={() => {
@@ -107,23 +100,24 @@ function PreviewWindow({ motifKey }: { motifKey: string }) {
             </>
           )}
         </div>
-      {editing && (
-        <MotifEditor motif={asSaved} copy={!choice.saved} charts={[]} onClose={() => setEditing(false)}
-          onSave={(name, grid) => {
-            const now = Date.now()
-            const next = choice.saved ? { ...choice.saved, name, grid, editedAt: now } : { ...asSaved, name, grid, savedAt: now }
-            saveMotif.mutate(next, { onSuccess: () => motifPreview.set(`saved:${next.id}`) })
-          }} />
-      )}
     </FloatingWindow>
   )
 }
 
 function Window({ band }: { band: Band }) {
   const store = useEditorStore()
+  // On a phone or tablet a layer's only selected to edit it: a finger moves one on the chart without it.
+  const phone = usePhone()
+  const touch = useTouch()
+  const simple = phone || touch
   return (
     <FloatingWindow name={band.name} nameLabel="Layer name" position={layerWindow.position}
-      onRename={(name) => store.update((p) => renameBand(p, band.id, name))} onClose={() => layerWindow.open.set(false)}>
+      onRename={(name) => store.update((p) => renameBand(p, band.id, name))}
+      onClose={() => {
+        layerWindow.editing.set(null)
+        // Done editing: the chart's as it is again.
+        if (simple) store.selectLayer(null)
+      }}>
       <Palette />
       <MotifCanvas band={band} />
       <Settings band={band} />

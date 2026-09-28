@@ -69,57 +69,6 @@
   background: var(--surface-sunken);
 }
 
-.motifEditor { inline-size: min(28rem, calc(100vw - 2rem)); max-block-size: calc(100dvh - 2rem); }
-.motifField { display: grid; gap: 0.3rem; font-size: 0.8125rem; color: var(--ink-muted); }
-.motifName {
-  padding: 0.4rem 0.5rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-s);
-  background: var(--surface);
-  color: var(--ink);
-  font: inherit;
-  font-size: 0.9375rem;
-  &:focus { outline: none; border-color: var(--accent); }
-}
-.motifSize { display: flex; flex-wrap: wrap; gap: 1rem; }
-.slots { display: flex; gap: 0.4rem; }
-.slot {
-  inline-size: 1.75rem;
-  block-size: 1.75rem;
-  border: 1px solid var(--line-strong);
-  border-radius: 50%;
-  cursor: pointer;
-  &[aria-checked='true'] { outline: 2px solid var(--accent); outline-offset: 2px; }
-  /* Clear: no stitch, shown as a crossed-out empty swatch. */
-  &[data-clear] { background: linear-gradient(135deg, transparent 46%, var(--ink-faint) 46% 54%, transparent 54%) var(--surface) !important; }
-}
-.motifUse {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem;
-  & select {
-    flex: 1 1 10rem;
-    min-inline-size: 0;
-    padding: 0.4rem 0.5rem;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-s);
-    background: var(--surface);
-    color: var(--ink);
-    font: inherit;
-  }
-}
-
-.motifGrid {
-  display: grid;
-  place-items: center;
-  overflow: auto;
-  padding: 0.5rem;
-  border-radius: var(--radius-m);
-  background: var(--surface-sunken);
-  & canvas { touch-action: none; cursor: crosshair; background: var(--surface); }
-}
-
 .who { color: var(--ink-muted); font-size: 0.875rem; }
 .signOutProblem { margin-block: -1rem 1.5rem; color: var(--warning); font-size: 0.875rem; }
 

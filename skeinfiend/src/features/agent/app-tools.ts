@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import { projectKeys, projectListQuery } from '@/data/projects'
 import type { ProjectRepository } from '@/data/repository'
 import { createExampleProject } from '@/domain/example'
+import { uniqueName } from '@/domain/names'
 import { createProject } from '@/domain/project'
 import type { AgentTool, ToolResult } from './tools'
 
@@ -50,7 +51,9 @@ export function appTools({ repository, queryClient, open, openId }: {
         const id = crypto.randomUUID()
         const now = Date.now()
         const made = example === true ? createExampleProject(id, now) : createProject({ id, name: 'New chart', now })
-        const project = typeof name === 'string' && name.trim() ? { ...made, name: name.trim() } : made
+        const asked = typeof name === 'string' && name.trim() ? name.trim() : made.name
+        // Under a name no other chart has, as the knitter's own are.
+        const project = { ...made, name: uniqueName(asked, (await charts()).map((c) => c.name), 'New chart') }
         await repository.put(project)
         queryClient.setQueryData(projectKeys.detail(id), project)
         await queryClient.invalidateQueries({ queryKey: projectKeys.list() })

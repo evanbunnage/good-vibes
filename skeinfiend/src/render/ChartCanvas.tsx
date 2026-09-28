@@ -40,8 +40,9 @@ export interface ChartCanvasProps {
   /**
    * Pointer events in cells, plus the exact (fractional) row and how many rows
    * a few screen pixels span, for grabbing the edges between rows at any zoom.
+   * A press answered with `'pan'` moves the view instead.
    */
-  readonly onCellDown?: (x: number, y: number, event: PointerEvent, exact: ExactPoint) => void
+  readonly onCellDown?: (x: number, y: number, event: PointerEvent, exact: ExactPoint) => 'pan' | undefined
   readonly onCellMove?: (x: number, y: number, exact: ExactPoint) => void
   readonly onCellUp?: () => void
   /** A click on a stitch, where dragging pans (a chart that isn't drawn on): pressed and let go without moving. */
@@ -63,6 +64,12 @@ export interface ChartCanvasProps {
   /** Called when the view pans or zooms, for positioning things over the chart. */
   readonly onViewChange?: (view: View) => void
   /** For knitting mode: keeps this row centered. */
+  /**
+   * The smallest a stitch is fitted at, in pixels, so it can be read (knitting
+   * from it on a phone). Wider than the view then, it starts at the right edge,
+   * where stitch 1 is and each row begins; it's moved around from there.
+   */
+  readonly readable?: number
   readonly focusRow?: number | null
   readonly ref?: Ref<ChartCanvasHandle>
 }
@@ -79,7 +86,7 @@ const MAX_CELL = 64
  * space-drag or middle-drag to pan. Touch: one finger paints, two pan and zoom.
  */
 export function ChartCanvas(props: ChartCanvasProps) {
-  const { subscribe, aspect, fitKey, interactive = true, label, focusRow, margins, ref } = props
+  const { subscribe, aspect, fitKey, interactive = true, label, focusRow, margins, readable = 0, ref } = props
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const view = useRef<View>({ cellWidth: 12, cellHeight: 12 * aspect, originX: 0, originY: 0 })
@@ -177,16 +184,17 @@ export function ChartCanvas(props: ChartCanvasProps) {
     const gutter = { ...GUTTER, ...margins }
     const availW = width - gutter.left - gutter.right
     const availH = height - gutter.top - gutter.bottom
-    const cellWidth = clamp(Math.min(availW / grid.width, availH / (grid.height * aspect)), MIN_CELL, MAX_CELL)
+    const cellWidth = clamp(Math.max(Math.min(availW / grid.width, availH / (grid.height * aspect)), readable), MIN_CELL, MAX_CELL)
     const cellHeight = cellWidth * aspect
+    const wide = grid.width * cellWidth > availW
     userMoved.current = false
-    setView({
+    setView(bounded({
       cellWidth,
       cellHeight,
-      originX: gutter.left + (availW - grid.width * cellWidth) / 2,
+      originX: wide ? gutter.left + availW - grid.width * cellWidth : gutter.left + (availW - grid.width * cellWidth) / 2,
       originY: gutter.top + (availH - grid.height * cellHeight) / 2,
-    })
-  }, [aspect, setView, size, margins])
+    }))
+  }, [aspect, setView, size, margins, readable, bounded])
 
   /**
    * Zooms around a point (the pointer, or the middle of a pinch), kept on the
@@ -329,6 +337,19 @@ function usePointerInput({ canvasRef, view, callbacks, interactive, zoomAt, setV
     const inGrid = (cell: { x: number; y: number }, grid: Grid) =>
       cell.x >= 0 && cell.y >= 0 && cell.x < grid.width && cell.y < grid.height
 
+    /** Whether a problem row's mark in the margin is at this point, and if so, it's pointed out. */
+    const markAt = (p: { x: number; y: number }, cell: ReturnType<typeof cellAt>, grid: Grid) => {
+      const v = view.current
+      if (!(p.x < v.originX && p.x >= v.originX - GUTTER.left && cell.y >= -1 && cell.y <= grid.height)) return false
+      // A mark is small: pointing within a few pixels of one counts, nearest row first.
+      const reach = Math.max(1, Math.ceil(6 / v.cellHeight))
+      for (let d = 0; d <= reach; d = d > 0 ? -d : -d + 1) {
+        const row = cell.y + d
+        if (row >= 0 && row < grid.height && callbacks.current.onMarginHover?.(row, p)) return true
+      }
+      return false
+    }
+
     const onPointerDown = (e: PointerEvent) => {
       const p = local(e)
       pointers.set(e.pointerId, p)
@@ -348,7 +369,10 @@ function usePointerInput({ canvasRef, view, callbacks, interactive, zoomAt, setV
       if (e.button !== 0 && e.button !== 2) return
       mode = 'paint'
       const cell = cellAt(p.x, p.y)
-      callbacks.current.onCellDown?.(cell.x, cell.y, e, cell.exact)
+      if (callbacks.current.onCellDown?.(cell.x, cell.y, e, cell.exact) === 'pan') {
+        mode = 'pan'
+        panStart = p
+      }
     }
 
     const onPointerMove = (e: PointerEvent) => {
@@ -376,17 +400,7 @@ function usePointerInput({ canvasRef, view, callbacks, interactive, zoomAt, setV
         callbacks.current.onPointer?.({ x: cell.exact.x, y: cell.exact.y })
       }
       if (mode === 'paint') callbacks.current.onCellMove?.(cell.x, cell.y, cell.exact)
-      const v = view.current
-      const inMargin = mode === 'idle' && p.x < v.originX && p.x >= v.originX - GUTTER.left && cell.y >= -1 && cell.y <= grid.height
-      // A mark is small: pointing within a few pixels of one counts, nearest row first.
-      let marked = false
-      if (inMargin) {
-        const reach = Math.max(1, Math.ceil(6 / v.cellHeight))
-        for (let d = 0; d <= reach && !marked; d = d > 0 ? -d : -d + 1) {
-          const row = cell.y + d
-          if (row >= 0 && row < grid.height) marked = callbacks.current.onMarginHover?.(row, p) ?? false
-        }
-      }
+      const marked = mode === 'idle' && markAt(p, cell, grid)
       if (!marked) callbacks.current.onMarginHover?.(null, p)
       if (!spaceHeld) canvas.style.cursor = marked ? 'default' : (callbacks.current.cursorAt?.(cell.x, cell.exact) ?? '')
     }
@@ -398,7 +412,14 @@ function usePointerInput({ canvasRef, view, callbacks, interactive, zoomAt, setV
         const p = local(e)
         if (Math.hypot(p.x - panStart.x, p.y - panStart.y) < 4) {
           const cell = cellAt(p.x, p.y)
-          if (inGrid(cell, callbacks.current.getDrawing().grid)) callbacks.current.onCellClick?.(cell.x, cell.y)
+          const grid = callbacks.current.getDrawing().grid
+          if (inGrid(cell, grid)) callbacks.current.onCellClick?.(cell.x, cell.y)
+          // A finger can't hover: tapping a problem row's mark shows what hovering it would, until the next tap.
+          if (e.pointerType === 'touch') {
+            const marked = markAt(p, cell, grid)
+            if (!marked) callbacks.current.onMarginHover?.(null, p)
+            callbacks.current.onPointer?.(marked ? { x: cell.exact.x, y: cell.exact.y } : null)
+          }
         }
         panStart = null
       }
@@ -408,7 +429,9 @@ function usePointerInput({ canvasRef, view, callbacks, interactive, zoomAt, setV
       }
     }
 
-    const onPointerLeave = () => {
+    const onPointerLeave = (e: PointerEvent) => {
+      // A finger lifting "leaves" too: what a tap showed stays until the next tap.
+      if (e.pointerType === 'touch') return
       pointerAt.current = null
       callbacks.current.onHover?.(null)
       callbacks.current.onPointer?.(null)

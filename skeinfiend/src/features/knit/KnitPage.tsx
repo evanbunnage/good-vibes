@@ -148,6 +148,8 @@ export function KnitPage() {
           aspect={cellAspect(project.gauge)}
           fitKey={`knit-${chart.width}x${chart.height}`}
           interactive={false}
+          // Stitches big enough to read on a phone: a wide chart starts at stitch 1, on the right.
+          readable={8}
           // Any row, a click away: knitters pick up where they are, not only one row on.
           onCellClick={(_x, cellY) => {
             setFinished(false)
@@ -173,7 +175,8 @@ export function KnitPage() {
         <section className={styles.row} aria-live="polite" aria-label="Current row">
           <div className={styles.rowHeader}>
             <h2>
-              Row {row} <span className={styles.of}>of {total}</span>
+              {/* Knitters call a row worked in the round a round, as the written row below does (Rnd). */}
+              {construction === 'round' ? 'Round' : 'Row'} {row} <span className={styles.of}>of {total}</span>
             </h2>
             <span className={styles.side}>
               {construction === 'round'
@@ -227,7 +230,7 @@ export function KnitPage() {
               </button>
             ) : (
               <button type="button" className={`${ui.button} ${styles.next}`} data-variant="primary" onClick={() => go(1)} disabled={lastRow}>
-                {lastRow ? 'Finished!' : <>Next row <Icon name="chevronUp" /></>}
+                {lastRow ? 'Finished!' : <>Next {construction === 'round' ? 'round' : 'row'} <Icon name="chevronUp" /></>}
               </button>
             )}
           </div>

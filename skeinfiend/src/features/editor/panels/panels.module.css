@@ -298,6 +298,8 @@
 
 .grip {
   display: grid;
+  /* A finger dragging it moves the layer, not the page. */
+  touch-action: none;
   place-items: center;
   inline-size: 1.25rem;
   min-block-size: 2rem;
@@ -515,6 +517,17 @@
   &:active { cursor: grabbing; }
   &[data-new] { border-style: dashed; }
   & svg { inline-size: 1rem; block-size: 1rem; }
+  /* The motif the helper points to: its hover look fading in and out three times (six seconds), nothing moving, then settled. */
+  &[data-nudge] { animation: tile-hover 2s ease-in-out 3; }
+}
+
+@keyframes tile-hover {
+  0%, 100% { border-color: var(--line-strong); }
+  50% { border-color: var(--accent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stripTile[data-nudge] { animation: none; border-color: var(--accent); }
 }
 
 /* The piece: a label, and its setting beside it. */
@@ -536,84 +549,158 @@
 }
 
 /* The first step, shown once, by the motifs: a tile sliding onto a scrap of chart. */
+/* The helper window's picture: a square scrap of chart, and a tile carried onto it. */
 .helper {
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 0.65rem;
-  margin-block: 0.1rem 0.5rem;
-  padding: 0.55rem 0.4rem 0.55rem 0.6rem;
-  border-radius: var(--radius-m);
-  background: var(--accent-soft);
-  color: var(--ink);
-  font-size: 0.8125rem;
-  line-height: 1.35;
+  justify-items: center;
+  padding-block: 0.1rem 0.2rem;
+}
+
+/* The helper window: compact, its title on two lines, and frosted, the chart soft behind it, so it
+   reads as a tip over the chart rather than part of the editor. It comes in lightly. */
+div[data-motif-helper] {
+  inline-size: min(13rem, calc(100% - 1.5rem));
+  border: 1px solid rgb(255 255 255 / 0.6);
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  backdrop-filter: blur(12px) saturate(1.3);
+  box-shadow: 0 6px 20px -8px rgb(var(--shadow-tint) / 0.3);
+  animation: helper-in 0.4s var(--ease) both;
+
+  /* Its title is the tip itself: quieter than a window's name, and not a field to click into. */
+  & h2 {
+    color: var(--ink-muted);
+    font-weight: 500;
+    line-height: 1.3;
+    cursor: inherit;
+
+    &:hover { border-color: transparent; }
+  }
+}
+
+@keyframes helper-in {
+  from { opacity: 0; transform: translateY(0.3rem); }
 }
 
 .helperDemo {
+  /* How far the tile is carried: from beside the chart onto its middle. */
+  --helper-travel: 4.75rem;
   position: relative;
   display: block;
-  inline-size: 4.2rem;
-  block-size: 2.4rem;
+  inline-size: 7.9rem;
+  block-size: 4rem;
 }
 
-/* A scrap of the chart: graph paper in the main color. */
+/* A scrap of the chart: graph paper in the chart's main color. */
 .helperChart {
   position: absolute;
-  inset-block: 0.2rem;
+  inset-block: 0;
   inset-inline-start: 0;
-  inline-size: 2.2rem;
-  border-radius: 3px;
+  inline-size: 4rem;
+  border-radius: 4px;
   background:
-    linear-gradient(var(--line) 1px, transparent 1px) 0 0 / 0.4rem 0.4rem,
-    linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0 / 0.4rem 0.4rem,
-    #ddc9a3;
+    linear-gradient(var(--line) 1px, transparent 1px) 0 0 / 0.45rem 0.45rem,
+    linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0 / 0.45rem 0.45rem,
+    var(--helper-main, #ddc9a3);
   box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.12);
 }
 
 .helperTile {
   position: absolute;
-  inset-block-start: 0.35rem;
+  inset-block-start: 0.85rem;
   inset-inline-end: 0;
+  /* One definite cell, so the motif's preview can size to it, as in the strip. */
   display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   place-items: center;
-  inline-size: 1.7rem;
-  block-size: 1.7rem;
-  padding: 0.2rem;
+  inline-size: 2.3rem;
+  block-size: 2.3rem;
+  padding: 0.25rem;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-s);
   background: var(--surface);
   box-shadow: 0 2px 6px -2px rgb(var(--shadow-tint) / 0.35);
-  animation: helper-drag 3.2s var(--ease) infinite;
+  /* Three times, then still, where it started: shown, not nagging. */
+  animation: helper-drag 3.2s var(--ease) 0.6s 3 backwards;
 
   & svg { inline-size: 100%; block-size: 100%; fill: #2f332f; }
 }
+
+/* A hand, closed on the tile. */
+.helperTile .helperHand {
+  position: absolute;
+  inset-block-end: -0.7rem;
+  inset-inline-end: -0.65rem;
+  inline-size: 1.35rem;
+  block-size: 1.35rem;
+  overflow: visible;
+}
+.helperHandOutline { fill: #2f332f; stroke: #2f332f; stroke-width: 2.6; }
+.helperHandFill { fill: #fff; }
+.helperHandLines { fill: none; stroke: #2f332f; stroke-width: 1.1; stroke-linecap: round; }
 
 /* Picked up, carried left onto the chart, set down in its yarn, then back to start again. */
 @keyframes helper-drag {
   0%, 12% { transform: translateX(0) scale(1); opacity: 1; }
   20% { transform: translateX(0) scale(1.08); }
-  55%, 70% { transform: translateX(-2.1rem) scale(1.08); opacity: 1; background: var(--surface); }
-  80% { transform: translateX(-2.1rem) scale(1); opacity: 1; background: #ddc9a3; border-color: transparent; box-shadow: none; }
-  92% { transform: translateX(-2.1rem) scale(1); opacity: 0; }
+  55%, 70% { transform: translateX(calc(-1 * var(--helper-travel))) scale(1.08); opacity: 1; background: var(--surface); }
+  80% { transform: translateX(calc(-1 * var(--helper-travel))) scale(1); opacity: 1; background: var(--helper-main, #ddc9a3); border-color: transparent; box-shadow: none; }
+  92% { transform: translateX(calc(-1 * var(--helper-travel))) scale(1); opacity: 0; }
   93% { transform: translateX(0) scale(1); opacity: 0; }
   100% { transform: translateX(0) scale(1); opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .helperTile { animation: none; }
+  [data-motif-helper], .helperTile { animation: none; }
 }
 
-.helperClose {
+/* The tip where motifs can't be dragged: a translucent bubble of its own, floating just above the
+   motifs (placed by script), its tail pointing down at the first one. Frosted like the desktop helper. */
+.tipBubble {
+  --tip-bg: color-mix(in srgb, var(--surface) 72%, transparent);
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-inline-size: calc(100vw - 1rem);
+  padding: 0.3rem 0.3rem 0.3rem 0.85rem;
+  border: 1px solid rgb(255 255 255 / 0.6);
+  border-radius: var(--radius-l);
+  background: var(--tip-bg);
+  backdrop-filter: blur(12px) saturate(1.3);
+  box-shadow: 0 8px 24px -10px rgb(var(--shadow-tint) / 0.4);
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  animation: helper-in 0.4s var(--ease) both;
+
+  /* The tail, on the first motif. */
+  &::after {
+    content: '';
+    position: absolute;
+    inset-block-start: 100%;
+    inset-inline-start: calc(var(--tail, 1.5rem) - 7px);
+    border: 7px solid transparent;
+    border-block-start-color: var(--tip-bg);
+    filter: drop-shadow(0 1px 0 rgb(255 255 255 / 0.6));
+  }
+}
+
+.tipBubbleClose {
   display: grid;
   place-items: center;
-  inline-size: 1.6rem;
-  block-size: 1.6rem;
+  inline-size: 2rem;
+  block-size: 2rem;
   border: 0;
   border-radius: var(--radius-s);
   background: none;
-  color: var(--ink-muted);
+  color: var(--ink-faint);
 
-  &:hover { background: rgb(0 0 0 / 0.06); color: var(--ink); }
-  & svg { inline-size: 0.9rem; block-size: 0.9rem; }
+  & svg { inline-size: 0.95rem; block-size: 0.95rem; }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .tipBubble { animation: none; }
+}
+

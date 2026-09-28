@@ -5,6 +5,7 @@ import { Icon } from '@/ui/Icon'
 import { createPreference } from '@/ui/preference'
 import { useEditorStore, useProject } from '../editor-context'
 import { motifPreview } from '../layer-window'
+import { motifLooked, useMotifHelper } from './motif-helper-state'
 import { MOTIF_DRAG_TYPE, useAddLayer, type MotifChoice } from './use-add-layer'
 import styles from './panels.module.css'
 
@@ -22,10 +23,17 @@ const expandedPreference = createPreference<boolean>('skeinfiend.motifsExpanded'
 export function MotifStrip() {
   const { builtIn, saved, add } = useAddLayer()
   const store = useEditorStore()
+  const project = useProject()
+  // While the helper's up, the first motif looks hovered, on and off: the one to try.
+  const nudge = useMotifHelper(project.id).wanted
+  const first = saved[0] ?? builtIn[0]
   // A click shows it in the layer window first, to add from there; a drag onto the chart places it straight away.
   const look = (key: string) => {
+    motifLooked()
     store.selectLayer(null)
     motifPreview.set(key)
+    // On a phone the motifs are below the chart: brought back into view, so the look (then the motif added) shows.
+    document.querySelector('[data-chart-area]')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }
   const drag = (key: string) => (e: React.DragEvent) => {
     e.dataTransfer.setData(MOTIF_DRAG_TYPE, key)
@@ -57,13 +65,13 @@ export function MotifStrip() {
 
   return (
     <div className={styles.stripArea}>
-    <div ref={strip} className={styles.strip} data-expanded={expanded || undefined} role="group" aria-label="Add a colorwork motif">
+    <div ref={strip} className={styles.strip} data-expanded={expanded || undefined} data-motif-strip role="group" aria-label="Add a colorwork motif">
       <button type="button" className={styles.stripTile} data-new title="New colorwork motif" aria-label="New colorwork motif" draggable onDragStart={drag('blank')} onClick={() => add('blank')}>
         <Icon name="plus" />
       </button>
       {/* The designer's own: deleted only in the library, on the home page, where it's asked first. */}
-      {saved.map((choice) => <Tile key={choice.key} choice={choice} onLook={() => look(choice.key)} onDragStart={drag(choice.key)} />)}
-      {builtIn.map((choice) => <Tile key={choice.key} choice={choice} onLook={() => look(choice.key)} onDragStart={drag(choice.key)} />)}
+      {saved.map((choice) => <Tile key={choice.key} choice={choice} nudge={nudge && choice === first} onLook={() => look(choice.key)} onDragStart={drag(choice.key)} />)}
+      {builtIn.map((choice) => <Tile key={choice.key} choice={choice} nudge={nudge && choice === first} onLook={() => look(choice.key)} onDragStart={drag(choice.key)} />)}
     </div>
     {overflows && (
       <button type="button" className={styles.stripToggle} aria-expanded={expanded} aria-label={expanded ? 'Show colorwork motifs in a row' : 'Show all colorwork motifs'}
@@ -81,13 +89,18 @@ const INK = '#2f332f'
 /** A motif's other colors, lighter, so a saved two-color motif still reads. */
 const INK_LIGHT = '#9aa097'
 
-function Tile({ choice, onLook, onDragStart }: { choice: MotifChoice; onLook: () => void; onDragStart: (e: React.DragEvent) => void }) {
+function Tile({ choice, nudge, onLook, onDragStart }: { choice: MotifChoice; nudge: boolean; onLook: () => void; onDragStart: (e: React.DragEvent) => void }) {
+  return (
+    <button type="button" className={styles.stripTile} data-nudge={nudge || undefined} title={`${choice.name}: click to look, or drag onto the chart`} aria-label={choice.name} draggable onDragStart={onDragStart} onClick={onLook}>
+      <MotifArt choice={choice} />
+    </button>
+  )
+}
+
+/** A motif as its tile shows it, in ink. */
+export function MotifArt({ choice }: { choice: MotifChoice }) {
   const project = useProject()
   const [first] = motifYarns(choice.motif)
   const colors = project.yarns.map((_, i) => (i === first ? INK : INK_LIGHT))
-  return (
-    <button type="button" className={styles.stripTile} title={`${choice.name}: click to look, or drag onto the chart`} aria-label={choice.name} draggable onDragStart={onDragStart} onClick={onLook}>
-      <ChartPreview grid={choice.motif} colors={colors} fill />
-    </button>
-  )
+  return <ChartPreview grid={choice.motif} colors={colors} fill />
 }

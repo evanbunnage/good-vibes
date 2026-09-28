@@ -1,9 +1,11 @@
-import { useNavigate } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
+import { useNavigate, useRouteContext } from '@tanstack/react-router'
 import { useId, useState } from 'react'
-import { useAddProject } from '@/data/projects'
+import { projectListQuery, useAddProject, useRepository } from '@/data/projects'
 import { DEFAULT_GAUGE, isValidGauge, type Gauge } from '@/domain/gauge'
 import { createExampleProject } from '@/domain/example'
 import { createProject } from '@/domain/project'
+import { offerMotifHelper, startedChart } from '@/features/editor/panels/motif-helper-state'
 import { GaugeFields } from '@/features/pieces/GaugeFields'
 import ui from '@/ui/ui.module.css'
 import styles from './projects.module.css'
@@ -17,6 +19,9 @@ import { runAction } from '@/ui/run-action'
 export function NewProjectDialog({ dialog }: { dialog: React.RefObject<HTMLDialogElement | null> }) {
   const navigate = useNavigate()
   const addProject = useAddProject()
+  const { user } = useRouteContext({ from: '__root__' })
+  const repository = useRepository()
+  const { data: charts = [] } = useQuery(projectListQuery(repository))
   const titleId = useId()
   const [gauge, setGauge] = useState<Gauge>(DEFAULT_GAUGE)
   const valid = isValidGauge(gauge)
@@ -25,6 +30,7 @@ export function NewProjectDialog({ dialog }: { dialog: React.RefObject<HTMLDialo
   async function openExample() {
     const project = createExampleProject(crypto.randomUUID(), Date.now())
     await addProject.mutateAsync(project)
+    offerMotifHelper(project.id)
     dialog.current?.close()
     void navigate({ to: '/p/$projectId', params: { projectId: project.id } })
   }
@@ -34,6 +40,7 @@ export function NewProjectDialog({ dialog }: { dialog: React.RefObject<HTMLDialo
     if (!valid) return
     const project = createProject({ id: crypto.randomUUID(), name: 'New chart', gauge, now: Date.now() })
     await addProject.mutateAsync(project)
+    startedChart(project.id, { signedIn: Boolean(user), otherCharts: charts.filter((c) => c.id !== project.id).length })
     dialog.current?.close()
     void navigate({ to: '/p/$projectId', params: { projectId: project.id } })
   }

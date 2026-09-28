@@ -22,8 +22,7 @@ import { usePhone } from '@/ui/use-phone'
 import ui from '@/ui/ui.module.css'
 import { useEditor, useEditorStore, useEditsPending, useProject } from './editor-context'
 import { LayersSection } from './panels/LayersSection'
-import { MotifStrip } from './panels/MotifStrip'
-import { Section } from './panels/Section'
+import { MotifHelper, MotifTip } from './panels/MotifHelper'
 import { MOTIF_DRAG_TYPE, useAddLayer } from './panels/use-add-layer'
 import { describeRow } from './issues'
 import { FloatsCard, FloatsTool } from './Floats'
@@ -84,9 +83,8 @@ export function EditorPage() {
       <aside className={styles.panel} aria-label="Colorwork settings">
         {phone ? (
           <>
-            <Section title="Colorwork motifs">
-              <MotifStrip />
-            </Section>
+            {/* The colorwork as layers, as on a larger screen: what's been added can be edited, hidden or taken off again. */}
+            <LayersSection />
             <YarnsSection />
           </>
         ) : (
@@ -215,6 +213,8 @@ const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+'
 function ViewControls({ canvas, phone }: { canvas: React.RefObject<ChartCanvasHandle | null>; phone: boolean }) {
   const store = useEditorStore()
   const sizing = useEditor(selectSizing)
+  const canUndo = useEditor(selectCanUndo)
+  const canRedo = useEditor(selectCanRedo)
   return (
     <nav className={styles.toolbar} aria-label="View">
       {/* The mark, in the corner above the views, level with the top bar: home to the landing page.
@@ -249,6 +249,19 @@ function ViewControls({ canvas, phone }: { canvas: React.RefObject<ChartCanvasHa
               <span aria-hidden>Fit</span>
             </button>
           </div>
+          {/* On a phone there's no room for them in the top bar: here, so a motif taken off by mistake comes back. */}
+          {phone && (
+            <div className={styles.toolGroup}>
+              <button type="button" className={styles.tool} disabled={!canUndo} onClick={() => store.undo()} aria-label="Undo">
+                <Icon name="undo" />
+                <span aria-hidden>Undo</span>
+              </button>
+              <button type="button" className={styles.tool} disabled={!canRedo} onClick={() => store.redo()} aria-label="Redo">
+                <Icon name="redo" />
+                <span aria-hidden>Redo</span>
+              </button>
+            </div>
+          )}
       </div>
     </nav>
   )
@@ -369,7 +382,7 @@ function EditorCanvas({ canvas, phone }: { canvas: React.RefObject<ChartCanvasHa
   const issueRow = useEditor(selectIssueRow)
 
   return (
-    <div ref={stage} className={styles.canvasArea}
+    <div ref={stage} className={styles.canvasArea} data-chart-area
       // Pressing on the chart itself (not in a window over it) puts the yarn details away.
       onPointerDownCapture={(e) => {
         if ((e.target as HTMLElement).closest('[role=dialog]')) return
@@ -387,17 +400,31 @@ function EditorCanvas({ canvas, phone }: { canvas: React.RefObject<ChartCanvasHa
       interactive={!phone}
       label={phone ? 'Colorwork chart' : 'Colorwork chart. Drag a layer to move it.'}
       // With the sizes showing, pressing adds a width there; otherwise it paints, or moves a layer.
-      onCellDown={(x, y, e, exact) => sizing
-        ? e.button === 0 && y >= 0 && y < store.project.outline.height && sizingPress.current?.(e, exact.y)
-        : (e.button === 0 || e.button === 2) && store.pointerDown(x, y, { exactY: exact.y, slop: exact.slop, exactX: exact.x, slopX: exact.slopX, secondary: e.button === 2 })}
+      onCellDown={(x, y, e, exact) => {
+        if (sizing) {
+          if (e.button === 0 && y >= 0 && y < store.project.outline.height) sizingPress.current?.(e, exact.y)
+          return
+        }
+        // A finger doesn't paint on the chart (too fiddly): it moves the motifs, and otherwise the view.
+        // Motifs are painted in their own windows.
+        if (e.pointerType === 'touch') {
+          const hit = store.hitTest(x, exact.y, exact.slop, exact.x, exact.slopX)
+          if (!hit || hit.band.painted) return 'pan'
+          if (store.selectedBand()?.painted) store.selectLayer(null)
+        }
+        if (e.button === 0 || e.button === 2) store.pointerDown(x, y, { exactY: exact.y, slop: exact.slop, exactX: exact.x, slopX: exact.slopX, secondary: e.button === 2 })
+      }}
       onCellMove={(x, y, exact) => !sizing && store.pointerMove(x, y, exact.y, exact.x)}
       cursorAt={cursorAt}
       onViewChange={onViewChange}
       // With the sizes showing, a press's drag is the width's own (it commits itself): not a stroke to end.
       onCellUp={() => !sizing && store.pointerUp()}
       onMarginHover={onMarginHover}
+      // A tap that moved nothing (a finger, off the motifs): lets go of the selected layer, as pressing off it does with a mouse.
+      onCellClick={() => store.selectLayer(null)}
       dropType={MOTIF_DRAG_TYPE}
-      onDropAt={(_x, y, key) => add(key, y)}
+      // Dragged on: open, ready to draw on, move and size.
+      onDropAt={(_x, y, key) => add(key, y, { edit: true })}
       onHover={(cell) => store.setHover(cell)}
       onPointer={(at) => store.setPointer(at)}
       focusRow={issueRow}
@@ -405,6 +432,8 @@ function EditorCanvas({ canvas, phone }: { canvas: React.RefObject<ChartCanvasHa
     {sizing && chartView && <SizingOverlay view={chartView} canvas={canvas} press={sizingPress} />}
     <LayerWindow />
     <YarnWindow />
+    <MotifHelper />
+    <MotifTip />
     </div>
   )
 }
@@ -431,7 +460,7 @@ function useOpenLayer() {
   useEffect(() => {
     if (!layer || !store.project.bands.some((b) => b.id === layer)) return
     store.selectLayer(layer)
-    layerWindow.open.set(true)
+    layerWindow.editing.set(layer)
     void navigate({ to: '.', search: {}, replace: true })
   }, [layer, store, navigate])
 }

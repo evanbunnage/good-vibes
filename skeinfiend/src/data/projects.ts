@@ -1,5 +1,6 @@
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { createContext, useContext } from 'react'
+import { uniqueName } from '@/domain/names'
 import type { Project } from '@/domain/project'
 import { ChartConflictError, ChartGoneError, NotSignedInError } from './remote-repository'
 import { summarize, type ProjectRepository, type ProjectSummary } from './repository'
@@ -43,14 +44,19 @@ export class ProjectNotFoundError extends Error {
   }
 }
 
-/** Stores a new project (from the new-project form, the example, or a duplicate). */
+/**
+ * Stores a new project (from the new-project form, the example, or a
+ * duplicate), under a name no other chart has: a second example is "Snowflake
+ * hat 2", so the charts can be told apart in the list.
+ */
 export function useAddProject() {
   const repository = useRepository()
   const client = useQueryClient()
   return useMutation({
     mutationFn: async (project: Project) => {
-      await repository.put(project)
-      return project
+      const named = { ...project, name: uniqueName(project.name, (await repository.list()).map((c) => c.name), 'New chart') }
+      await repository.put(named)
+      return named
     },
     onSuccess: (project) => {
       client.setQueryData(projectKeys.detail(project.id), project)

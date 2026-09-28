@@ -9,6 +9,7 @@ import { NewProjectDialog } from '@/features/projects/NewProjectDialog'
 import { ChartPreview } from '@/render/ChartPreview'
 import { DeleteButton } from '@/ui/DeleteButton'
 import { Icon } from '@/ui/Icon'
+import { offerMotifHelper } from './panels/motif-helper-state'
 import ui from '@/ui/ui.module.css'
 import styles from './charts-menu.module.css'
 import { runAction } from '@/ui/run-action'
@@ -45,6 +46,7 @@ export function ChartsMenu({ currentId }: { currentId: string }) {
   async function openExample() {
     const project = createExampleProject(crypto.randomUUID(), Date.now())
     await addProject.mutateAsync(project)
+    offerMotifHelper(project.id)
     setOpen(false)
     void navigate({ to: '/p/$projectId', params: { projectId: project.id } })
   }

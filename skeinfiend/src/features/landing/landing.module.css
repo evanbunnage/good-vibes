@@ -2,7 +2,8 @@
   display: grid;
   grid-template-rows: auto 1fr;
   min-block-size: 100dvh;
-  padding-inline: max(1.25rem, env(safe-area-inset-left));
+  /* Roomier as the window widens, up to a wide window, where the column centers itself. */
+  padding-inline: max(env(safe-area-inset-left), clamp(1.25rem, 10vw - 1.5rem, 5rem));
   background: var(--canvas, var(--surface));
 }
 
@@ -38,7 +39,23 @@
 
 .actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-block-start: 0.4rem; }
 
-.continueSlot { min-block-size: 3.5rem; margin-block-start: 0.6rem; }
+.continueSlot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 1.25rem;
+  row-gap: 0.5rem;
+  min-block-size: 3.5rem;
+  margin-block-start: 0.6rem;
+}
+
+.signInToSave {
+  color: var(--accent);
+  font-size: 0.875rem;
+  text-decoration: none;
+
+  &:hover { text-decoration: underline; text-underline-offset: 3px; }
+}
 
 .continue {
   display: inline-flex;

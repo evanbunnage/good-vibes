@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { motifYarns, placementOf, scaledMotif, type Band } from '@/domain/bands'
 import { removeBand, renameBand, reorderBand, setBackground, takeLibraryVersion, updateBand } from '@/domain/edits'
 import { useSavedMotifs } from '@/data/library'
@@ -11,7 +11,6 @@ import ui from '@/ui/ui.module.css'
 import { useEditor, useEditorStore, useProject } from '../editor-context'
 import { Section } from './Section'
 import { layerWindow } from '../layer-window'
-import { MotifHelper } from './MotifHelper'
 import { MotifStrip } from './MotifStrip'
 import styles from './panels.module.css'
 
@@ -21,14 +20,14 @@ const selectRecoloring = (s: EditorState) => s.recoloring
 /**
  * The colorwork, as layers: motif layers from front to back, then the
  * main color everything sits on. Click a layer to select it: it's what
- * dragging on the chart moves, and its window (motif and settings) opens over
- * the chart. Double-click a name to rename it.
+ * dragging on the chart moves. Its pencil opens its window (motif and
+ * settings) over the chart. Double-click a name to rename it.
  */
 export function LayersSection() {
   const store = useEditorStore()
   const project = useProject()
   const selectedId = useEditor(selectSelectedLayer)
-  const windowOpen = layerWindow.open.use()
+  const editingId = layerWindow.editing.use()
   const recoloring = useEditor(selectRecoloring)
   const [dragging, setDragging] = useState<string | null>(null)
   // Where a dragged layer would land: before or after a row in the list.
@@ -45,10 +44,23 @@ export function LayersSection() {
   const colors = project.yarns.map((y) => y.hex)
   const background = project.yarns[project.background]?.hex
 
-  /** Editing a layer selects it and opens its window, even if the window was closed before. */
+  /** Editing a layer selects it and opens its window. */
   function edit(id: string) {
     store.selectLayer(id)
-    layerWindow.open.set(true)
+    layerWindow.editing.set(id)
+  }
+
+  const list = useRef<HTMLUListElement>(null)
+  /** Where a layer dragged to this height would land: before or after the row it's over. */
+  function dropAt(y: number): { index: number; edge: 'before' | 'after' } | null {
+    const rows = [...(list.current?.children ?? [])].slice(0, layers.length)
+    for (const [index, row] of rows.entries()) {
+      const { top, bottom, height } = row.getBoundingClientRect()
+      if (y >= top && y < bottom) return { index, edge: y < top + height / 2 ? 'before' : 'after' }
+    }
+    if (!rows.length) return null
+    // Past either end: to the front, or the back.
+    return y < rows[0]!.getBoundingClientRect().top ? { index: 0, edge: 'before' } : { index: rows.length - 1, edge: 'after' }
   }
 
   function endDrag() {
@@ -69,34 +81,29 @@ export function LayersSection() {
 
   return (
     <Section title="Colorwork" scrolls="first">
-      <ul className={styles.layers} aria-label="Layers, front to back">
+      <ul ref={list} className={styles.layers} aria-label="Layers, front to back">
         {layers.map((band, i) => {
           const selected = band.id === selectedId
-          const open = selected && windowOpen
+          const open = editingId === band.id
           const motif = scaledMotif(band)
           const yarns = motifYarns(motif)
           return (
             <li key={band.id} className={styles.layerGroup} data-selected={selected || undefined} data-open={open || undefined}
               data-dragging={dragging === band.id || undefined}
               data-drop={dragging && dragging !== band.id && drop?.index === i ? drop.edge : undefined}
-              draggable={renaming !== band.id}
-              onDragStart={(e) => {
-                setDragging(band.id)
-                e.dataTransfer.effectAllowed = 'move'
-              }}
-              onDragEnd={endDrag}
-              onDragOver={(e) => {
-                if (!dragging) return
-                e.preventDefault()
-                const { top, height } = e.currentTarget.getBoundingClientRect()
-                setDrop({ index: i, edge: e.clientY < top + height / 2 ? 'before' : 'after' })
-              }}
-              onDrop={(e) => {
-                e.preventDefault()
-                place()
-              }}>
+>
               <div className={styles.layer} data-grip>
+                {/* Dragged by pointer, not the browser's drag and drop, so a finger can do it as well as a mouse. */}
                 <button type="button" className={styles.grip} aria-label={`Rearrange ${band.name}`} title="Drag to rearrange"
+                  onPointerDown={(e) => {
+                    if (e.button !== 0) return
+                    e.preventDefault()
+                    e.currentTarget.setPointerCapture(e.pointerId)
+                    setDragging(band.id)
+                  }}
+                  onPointerMove={(e) => dragging === band.id && setDrop(dropAt(e.clientY))}
+                  onPointerUp={() => dragging === band.id && place()}
+                  onPointerCancel={endDrag}
                   onKeyDown={(e) => {
                     // Up is toward the front of the stack, as the list reads.
                     const by = e.key === 'ArrowUp' ? 1 : e.key === 'ArrowDown' ? -1 : 0
@@ -156,7 +163,7 @@ export function LayersSection() {
                 {band.painted ? <span className={styles.actionSpace} aria-hidden /> : (
                   <button type="button" className={ui.button} data-variant="ghost" data-size="icon" aria-pressed={open} data-open={open || undefined}
                     aria-label={open ? `Close ${band.name}` : `Edit ${band.name}`} title={open ? 'Close' : 'Edit'}
-                    onClick={() => (open ? layerWindow.open.set(false) : edit(band.id))}>
+                    onClick={() => (open ? layerWindow.editing.set(null) : edit(band.id))}>
                     <Icon name="pencil" />
                   </button>
                 )}
@@ -184,7 +191,6 @@ export function LayersSection() {
       </ul>
       {/* The colorwork motifs to add, under the layers they become. */}
       <MotifStrip />
-      <MotifHelper />
     </Section>
   )
 }

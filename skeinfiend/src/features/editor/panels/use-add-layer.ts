@@ -7,6 +7,7 @@ import { editedAt, motifInYarns, type SavedMotif } from '@/domain/saved-motifs'
 import type { EditorState } from '@/editor/store'
 import { useEditor, useEditorStore, useProject } from '../editor-context'
 import { layerWindow } from '../layer-window'
+import { motifAdded } from './motif-helper-state'
 
 /** A motif that can become a layer: from the built-in library, the designer's own, or blank to draw. */
 export interface MotifChoice {
@@ -52,7 +53,12 @@ export function useAddLayer() {
   }))
   const blank: MotifChoice = { key: 'blank', name: `Colorwork motif ${project.bands.length + 1}`, motif: blankMotif(), spacing: 0 }
 
-  function add(key: string, atRow?: number) {
+  /**
+   * Puts a motif on the chart, in free rows or at a row: just there, to see
+   * on the chart. To edit it (dragged on, or Edit pressed; and a blank one,
+   * which is there to draw), it's selected and its window opened.
+   */
+  function add(key: string, atRow?: number, { edit = key === 'blank' } = {}) {
     const choice = [...builtIn, ...saved, blank].find((c) => c.key === key)
     if (!choice) return
     const { motif, spacing } = choice
@@ -64,9 +70,12 @@ export function useAddLayer() {
       ...(choice.fromLibrary && { fromLibrary: choice.fromLibrary }),
     }
     store.update((p) => addBand(p, band))
+    // They've done what the helper shows: it's not needed again.
+    motifAdded()
+    if (!edit) return
     // Selected, so it's ready to place, and its window open to draw on, even if it was closed before.
     store.selectLayer(band.id)
-    layerWindow.open.set(true)
+    layerWindow.editing.set(band.id)
   }
 
   return { builtIn, saved, add }

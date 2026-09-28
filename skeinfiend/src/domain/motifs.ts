@@ -1,10 +1,17 @@
 import { gridFromRows, NONE, type Grid } from './grid'
 
 /**
- * Classic stranded colorwork motifs. `X` is the contrast color and `.` is
+ * Classic stranded colorwork motifs, the heart first (the one to try first). `X` is the contrast color and `.` is
  * transparent, so a motif sits on whatever background yarn is underneath.
  */
 const LIBRARY: ReadonlyArray<{ id: string; name: string; rows: string[]; spacing?: number }> = [
+  {
+    id: 'heart',
+    name: 'Heart',
+    // Solid across its middle, so repeats need a stitch between them to read as hearts.
+    spacing: 1,
+    rows: ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'],
+  },
   {
     id: 'peerie',
     name: 'Peerie',
@@ -55,13 +62,6 @@ const LIBRARY: ReadonlyArray<{ id: string; name: string; rows: string[]; spacing
       '.X..X..X.',
       'X...X...X',
     ],
-  },
-  {
-    id: 'heart',
-    name: 'Heart',
-    // Solid across its middle, so repeats need a stitch between them to read as hearts.
-    spacing: 1,
-    rows: ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'],
   },
   {
     id: 'zigzag',

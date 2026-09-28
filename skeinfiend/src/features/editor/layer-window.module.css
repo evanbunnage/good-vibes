@@ -97,11 +97,12 @@
   display: grid;
   grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   aspect-ratio: 4 / 3;
+  /* Never so tall the window runs off a phone's chart area: its title and close stay in view. */
+  max-block-size: min(12rem, 28dvh);
   padding: 1rem;
   border-radius: var(--radius-m);
 }
 
-.previewNote { color: var(--ink-muted); font-size: 0.8125rem; line-height: 1.4; }
 
 /* A colorwork motif's own actions, under Add: quiet, like the layer window's actions. */
 .previewActions {
