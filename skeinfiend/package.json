@@ -1,0 +1,50 @@
+{
+  "name": "skeinfiend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "predev": "sh scripts/db.sh && node scripts/migrate.ts",
+    "dev": "vite",
+    "build": "tsc -b && tsc -p tsconfig.worker.json && vite build",
+    "deploy": "npm run build && wrangler deploy",
+    "db:stop": "pg_ctl stop --silent",
+    "db:migrate:production": "node --env-file=.env.production scripts/migrate.ts",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b && tsc -p tsconfig.worker.json",
+    "lint": "biome lint"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.104.0",
+    "@tanstack/react-router": "^1.170.39",
+    "better-auth": "^1.7.6",
+    "idb": "^8.0.3",
+    "pg": "^8.23.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@cloudflare/vite-plugin": "^1.61.0",
+    "@cloudflare/workers-types": "^5.20260927.1",
+    "@tanstack/router-plugin": "^1.168.40",
+    "@types/node": "^26.6.3",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "fake-indexeddb": "^6.2.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.2",
+    "wrangler": "^4.142.0"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "workerd@1.20260926.1": true
+  }
+}

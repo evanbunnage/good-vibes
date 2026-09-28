@@ -1,0 +1,128 @@
+.palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+
+  & button {
+    display: grid;
+    place-items: center;
+    inline-size: 1.6rem;
+    block-size: 1.6rem;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.15);
+    color: var(--ink-muted);
+
+    &[aria-checked='true'] { outline: 2px solid var(--accent); outline-offset: 2px; }
+    &[data-eraser] { margin-inline-start: auto; background: var(--surface-sunken); }
+    /* The stitch brush: its symbol, square like a chart key's. */
+    &[data-stitch] { border-radius: var(--radius-s); background: var(--surface); box-shadow: none; & svg { inline-size: 100%; block-size: 100%; } }
+    & svg { inline-size: 0.95rem; block-size: 0.95rem; }
+  }
+}
+
+.canvas {
+  block-size: 12rem;
+  border-radius: var(--radius-m);
+  background: var(--chart-canvas);
+  overflow: hidden;
+}
+
+/* Each setting a row: its label, then its control, in one column to scan. */
+.settings {
+  display: grid;
+  grid-template-columns: 3.75rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.55rem 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--ink-muted);
+}
+
+/* A setting with two parts: its name across the row, then each part with an icon for its direction. */
+.group { grid-column: 1 / -1; margin-block-end: -0.25rem; }
+.direction {
+  display: flex;
+  justify-content: flex-end;
+  padding-inline-end: 0.6rem;
+  & svg { inline-size: 1rem; block-size: 1rem; }
+}
+
+.size {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.checkbox {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--ink);
+  cursor: pointer;
+
+  & input { inline-size: 1rem; block-size: 1rem; accent-color: var(--accent); }
+}
+
+/* What can be done with the layer: icons side by side, small labels below. */
+.actions {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.25rem;
+  padding-block-start: 0.2rem;
+  border-block-start: 1px solid var(--line);
+
+  & button {
+    display: grid;
+    justify-items: center;
+    gap: 0.15rem;
+    padding: 0.4rem 0.2rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-s);
+    background: none;
+    color: var(--ink-muted);
+    font-size: 0.6875rem;
+    font-weight: 500;
+
+    &:hover:not(:disabled) { background: var(--surface-sunken); color: var(--ink); }
+    &[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); }
+    &:disabled { cursor: default; }
+  }
+}
+
+/* A colorwork motif from the strip, before it's added: on the main color, as it'll look. */
+.preview {
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  aspect-ratio: 4 / 3;
+  padding: 1rem;
+  border-radius: var(--radius-m);
+}
+
+.previewNote { color: var(--ink-muted); font-size: 0.8125rem; line-height: 1.4; }
+
+/* A colorwork motif's own actions, under Add: quiet, like the layer window's actions. */
+.previewActions {
+  display: flex;
+  justify-content: center;
+  gap: 0.25rem;
+  & button:not([data-variant]) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.5rem;
+    border: 0;
+    border-radius: var(--radius-s);
+    background: none;
+    color: var(--ink-muted);
+    font: inherit;
+    font-size: 0.8125rem;
+    cursor: pointer;
+  }
+  & button:not([data-variant]):hover { background: var(--surface-sunken); color: var(--ink); }
+  & button[data-size='icon'] { inline-size: 1.9rem; min-block-size: 1.9rem; color: var(--ink-muted); }
+  & svg { inline-size: 0.95rem; block-size: 0.95rem; stroke-width: 1.5; }
+}
+

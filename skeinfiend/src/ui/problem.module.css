@@ -1,0 +1,11 @@
+.problem {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.75rem;
+  min-block-size: 100dvh;
+  padding: 2rem;
+  text-align: center;
+
+  & p { color: var(--ink-muted); max-inline-size: 32rem; }
+}

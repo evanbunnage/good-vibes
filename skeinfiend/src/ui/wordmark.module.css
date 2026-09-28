@@ -1,0 +1,6 @@
+.wordmark {
+  font-family: 'Pirata One', var(--font-display);
+  font-weight: 400;
+  line-height: 1;
+  white-space: nowrap;
+}

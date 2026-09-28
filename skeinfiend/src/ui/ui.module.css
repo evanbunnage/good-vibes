@@ -1,0 +1,124 @@
+/* Small shared controls. Feature styles live next to their components. */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-block-size: var(--tap);
+  padding-inline: 0.9rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 120ms var(--ease), border-color 120ms var(--ease);
+
+  &:hover:not(:disabled) { background: var(--surface-sunken); }
+  &:disabled { opacity: 0.45; cursor: default; }
+
+  &[data-variant='primary'] {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--primary-ink);
+    &:hover:not(:disabled) { background: color-mix(in oklab, var(--primary), black 12%); }
+  }
+
+  &[data-variant='ghost'] {
+    border-color: transparent;
+    background: transparent;
+    &:hover:not(:disabled) { background: var(--surface-sunken); }
+  }
+
+  /* Deleting, confirmed: unmistakable, and nothing else looks like it. */
+  &[data-variant='danger'] {
+    border-color: var(--warning);
+    background: var(--warning);
+    color: white;
+    &:hover:not(:disabled) { background: color-mix(in oklab, var(--warning), black 12%); }
+  }
+
+  &[data-size='compact'] { min-block-size: 1.75rem; padding-inline: 0.6rem; font-size: 0.8125rem; }
+
+  &[data-size='icon'] { inline-size: var(--tap); padding: 0; }
+}
+
+.field {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.8125rem;
+  color: var(--ink-muted);
+
+  & input, & select {
+    min-inline-size: 0;
+    inline-size: 100%;
+    min-block-size: var(--tap);
+    padding-inline: 0.65rem;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-s);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 0.9375rem;
+  }
+
+  & input[type='number'] { font-variant-numeric: tabular-nums; }
+}
+
+/* Options share the control's width evenly: no dead space beside the last one. */
+.segmented {
+  display: flex;
+  padding: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+  background: var(--surface-sunken);
+
+  & button {
+    flex: 1;
+    min-block-size: calc(var(--tap) - 6px);
+    padding-inline: 0.7rem;
+    border: 0;
+    border-radius: calc(var(--radius-s) - 2px);
+    background: transparent;
+    color: var(--ink-muted);
+    font-size: 0.8125rem;
+    font-weight: 500;
+
+    &[aria-pressed='true'] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+  }
+}
+
+.icon {
+  inline-size: 1.15rem;
+  block-size: 1.15rem;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dialog {
+  /* The reset zeroes margins, which is what centers a modal dialog. */
+  margin: auto;
+  inline-size: min(34rem, calc(100vw - 2rem));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+
+  &::backdrop { background: rgb(var(--shadow-tint) / 0.35); backdrop-filter: blur(2px); }
+
+  & > form { display: grid; gap: 1.1rem; padding: 1.5rem; }
+  & h2 { font-size: 1.35rem; }
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}

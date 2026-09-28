@@ -1,0 +1,50 @@
+.page {
+  display: grid;
+  place-items: center;
+  min-block-size: 100dvh;
+  padding: 1rem;
+}
+
+.card {
+  display: grid;
+  gap: 0.9rem;
+  inline-size: min(22rem, 100%);
+  padding: 1.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  & h2 { font-size: 1.2rem; }
+}
+
+.wordmark { line-height: 1; }
+
+.field {
+  display: grid;
+  gap: 0.3rem;
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+  & input {
+    padding: 0.5rem 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-s);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.9375rem;
+  }
+  & input:focus { outline: none; border-color: var(--accent); }
+}
+
+.problem { color: var(--warning); font-size: 0.8125rem; }
+.note { color: var(--ink-muted); font-size: 0.875rem; line-height: 1.4; }
+
+.switch {
+  justify-self: center;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  &:hover { text-decoration: underline; }
+}

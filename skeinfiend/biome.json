@@ -1,0 +1,55 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": [
+      "src/**",
+      "worker/**",
+      "scripts/**",
+      "!src/routeTree.gen.ts"
+    ]
+  },
+  "formatter": {
+    "enabled": false
+  },
+  "assist": {
+    "enabled": false
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "style": {
+        "noNonNullAssertion": "off",
+        "noDescendingSpecificity": "off"
+      },
+      "complexity": {
+        "noImportantStyles": "off"
+      },
+      "suspicious": {
+        "noFocusedTests": "off"
+      },
+      "a11y": {
+        "useSemanticElements": "off",
+        "noLabelWithoutControl": {
+          "level": "error",
+          "options": {
+            "inputComponents": [
+              "Field",
+              "ColorInput"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "css": {
+    "linter": {
+      "enabled": true
+    }
+  }
+}

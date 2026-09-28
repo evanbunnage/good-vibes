@@ -1,0 +1,71 @@
+.window {
+  position: absolute;
+  z-index: 1;
+  display: grid;
+  gap: 0.6rem;
+  inline-size: min(17rem, calc(100% - 1.5rem));
+  /* It holds a lot; on a short screen it scrolls rather than running off the chart. */
+  max-block-size: calc(100% - 1.5rem);
+  overflow-y: auto;
+  padding: 0 0.7rem 0.7rem;
+  /* Set apart from the chart by its lighter surface, not an outline. */
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  box-shadow: 0 4px 16px -6px rgb(var(--shadow-tint) / 0.25);
+
+  &[data-dragging] { box-shadow: 0 10px 28px -8px rgb(var(--shadow-tint) / 0.35); user-select: none; }
+}
+
+/* The title bar is the handle for moving the window. */
+.title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-inline: -0.7rem;
+  padding: 0.35rem 0.4rem 0.1rem 0.7rem;
+  cursor: grab;
+  touch-action: none;
+
+  .window[data-dragging] & { cursor: grabbing; }
+}
+
+/* Quiet, square, and in line with the title. */
+.close {
+  display: grid;
+  flex: none;
+  place-items: center;
+  inline-size: 1.6rem;
+  block-size: 1.6rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--ink-faint);
+  cursor: pointer;
+
+  &:hover { background: var(--surface-sunken); color: var(--ink); }
+  & svg { inline-size: 0.9rem; block-size: 0.9rem; stroke-width: 1.6; }
+}
+
+/* Reads as the title; shows it's editable on hover, and is a plain field while typing. */
+.name {
+  /* As wide as the name, so the rest of the title bar is left to drag by. */
+  field-sizing: content;
+  flex: 0 1 auto;
+  /* Pushes the close button to the end, after anything before the name. */
+  margin-inline-end: auto;
+  min-inline-size: 3rem;
+  max-inline-size: 100%;
+  margin-inline-start: -0.3rem;
+  padding: 0.15rem 0.3rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--ink);
+  font: 600 0.875rem var(--font-ui);
+  text-overflow: ellipsis;
+  cursor: text;
+
+  &:hover { border-color: var(--line); }
+  &:focus { border-color: var(--accent); background: var(--surface); outline: none; }
+}

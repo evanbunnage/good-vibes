@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.DS_Store
+*.local
+*.tsbuildinfo
+
+# Local state: Wrangler, the TanStack Router plugin, direnv, and the local Postgres
+.wrangler/
+.tanstack/
+.direnv/
+.pgdata/
+
+.env
+.env.*
+!.env.example
+.dev.vars*
