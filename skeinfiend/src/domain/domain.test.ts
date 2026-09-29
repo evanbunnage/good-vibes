@@ -144,7 +144,7 @@ describe('pieces', () => {
     const steps = shapingSteps(layoutSchematic(piece([[0, 10], [10, 10], [20, 20]]), gauge))
     expect(steps).toMatchObject([{ fromRow: 34, toRow: 64, fromStitches: 24, toStitches: 48 }])
     expect(describeShaping(steps[0]!, 'flat')).toBe('Increase 1 stitch at each edge every 2nd or 3rd row, 12 times')
-    expect(describeShaping(steps[0]!, 'round')).toBe('Increase 2 stitches every 2nd or 3rd round, 12 times')
+    expect(describeShaping(steps[0]!, 'round')).toBe('Increase 1 stitch at each end of the round every 2nd or 3rd round, 12 times')
     const [bindOff] = shapingSteps(layoutSchematic(piece([[0, 20], [10, 20], [10, 10], [20, 10]]), gauge))
     expect(describeShaping(bindOff!, 'flat')).toBe('Bind off 24 stitches (12 stitches at each edge)')
     // 22 stitches over 9 rows: too many to shape a pair a row, so some are bound off first.

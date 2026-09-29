@@ -1,6 +1,6 @@
 import { rowsPerCm, stitchesPerCm, type Gauge } from './gauge'
 import { rowNumber } from './numbering'
-import { describeShaping, inOpening, layoutSchematic, shapingSteps, type Construction, type Opening, type SchematicPiece } from './pieces'
+import { describeShaping, inOpening, layoutSchematic, ribRows, shapingSteps, type Construction, type Opening, type SchematicPiece } from './pieces'
 import type { Project } from './project'
 
 /**
@@ -114,12 +114,7 @@ export function patternSteps(piece: SchematicPiece, gauge: Gauge, construction: 
   if (!first || !last) return []
   add(first.measurement.id, 1, 1, 'Cast on', `Cast on ${first.stitches} stitches${construction === 'round' ? ' and join to work in the round' : ''}.`)
 
-  for (const section of piece.sections ?? []) {
-    const from = layout.rowAt(section.bottom) + 1
-    // Its last row, counted up from the cast-on: not past the top, but reaching it.
-    const to = Math.max(from, Math.min(rows, Math.round((section.bottom + section.height) * rowsPerCm(gauge))))
-    add(section.id, from, to, section.name, 'Work in K1, P1 rib.')
-  }
+  for (const rib of ribRows(piece, gauge, construction)) add(rib.id, rib.from, rib.to, rib.name, 'Work in K1, P1 rib.')
 
   for (const step of shapingSteps(layout)) {
     add(step.to.id, step.fromRow, step.toRow, `${step.from.name} to ${step.to.name}`, `${describeShaping(step, workAt(step.fromRow) === 'round' ? 'round' : 'flat')}.`)

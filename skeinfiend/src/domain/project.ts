@@ -1,10 +1,10 @@
 import { applyBand, applyBandStitches, bandSpan, bandTile, hasStitches, type Band } from './bands'
-import { K2TOG, KNIT, M1L, M1R, SSK } from './stitches'
+import { K2TOG, KNIT, M1L, M1R, PURL, SSK } from './stitches'
 import { DEFAULT_RULES, floatsSignature, rulesAt, type FloatRules, type RowIssue } from './floats'
 import { DEFAULT_GAUGE, type Gauge } from './gauge'
 import { createGrid, NONE, type Grid } from './grid'
 import { STARTER_YARNS, type Yarn } from './palette'
-import { BUILT_IN_TEMPLATES, buildOutline, type Construction, type PieceTemplate, type SchematicPiece } from './pieces'
+import { BUILT_IN_TEMPLATES, buildOutline, ribRows, type Construction, type PieceTemplate, type SchematicPiece } from './pieces'
 
 export const SCHEMA_VERSION = 9
 
@@ -129,14 +129,28 @@ export function composeChart(project: Pick<Project, 'outline' | 'background' | '
  * seen from the right side, `NONE` outside the outline. Null when everything's
  * knit, which is most colorwork.
  */
-export function composeStitches(project: Pick<Project, 'outline' | 'bands'> & { construction?: Construction }, { knitted = false } = {}): Grid | null {
+export function composeStitches(project: Pick<Project, 'outline' | 'bands'> & { construction?: Construction; piece?: SchematicPiece; gauge?: Gauge }, { knitted = false } = {}): Grid | null {
   const bands = project.bands.filter((b) => b.visible && !(knitted && b.afterKnitting))
   const { outline } = project
   // Marked on flat pieces, shaped at their edges. In the round there are no edges: the row's written line says how.
   const shaping = (project.construction ?? 'flat') === 'flat' ? shapingStitches(outline) : []
-  if (!bands.some(hasStitches) && !shaping.length) return null
+  // A brim, hem, or cuff in rib: knitted k1, p1 there, so its rows are written that way.
+  const ribs = project.piece && project.gauge ? ribRows(project.piece, project.gauge, project.construction ?? 'flat') : []
+  if (!bands.some(hasStitches) && !shaping.length && !ribs.length) return null
   const stitches = createGrid(outline.width, outline.height)
   for (let i = 0; i < stitches.cells.length; i++) if (outline.cells[i] !== NONE) stitches.cells[i] = KNIT
+  for (const rib of ribs) {
+    for (let row = rib.from; row <= rib.to && row <= outline.height; row++) {
+      const y = outline.height - row
+      // Counted from stitch 1, on the right: k1, p1, k1, p1… (a chart's own stitch, set next, wins).
+      let n = 0
+      for (let x = outline.width - 1; x >= 0; x--) {
+        const i = y * outline.width + x
+        if (outline.cells[i] === NONE) continue
+        if (n++ % 2 === 1) stitches.cells[i] = PURL
+      }
+    }
+  }
   for (const band of bands) applyBandStitches(stitches, outline, band)
   // Where a chart has its own stitch (its own shaping, say), that wins.
   for (const { i, stitch } of shaping) if (stitches.cells[i] === KNIT) stitches.cells[i] = stitch

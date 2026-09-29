@@ -70,19 +70,22 @@ describe('shaping, marked as patterns write it', () => {
 })
 
 describe('shaping in the round, written as patterns write it', () => {
-  it('spreads a round\'s decreases or increases evenly, and marks nothing at the edges', async () => {
+  it('writes a round\'s shaping where the chart makes it', async () => {
     const { gridFromRows } = await import('./grid')
     const { composeStitches } = await import('./project')
-    // 16 stitches, then 14: a round decreased by 2 (top row first).
-    const chart = gridFromRows(['.XXXXXXXXXXXXXX.', 'XXXXXXXXXXXXXXXX'], { '.': 255, X: 0 })
     const labels = yarnLabels([30], 0)
-    expect(composeStitches({ outline: chart, bands: [], construction: 'round' })).toBeNull()
-    expect(writeRow(chart, 0, 'round', 1, null, labels, 0).text).toBe('*k6, k2tog; rep from * to end.')
-    // An uneven number: just how many.
+    // 16 stitches, then 14, a stitch gone from the left end of each of 2 sections (top row first): a crown's wedges.
+    const crown = gridFromRows(['.XXXXXXX.XXXXXXX', 'XXXXXXXXXXXXXXXX'], { '.': 255, X: 0 })
+    expect(composeStitches({ outline: crown, bands: [], construction: 'round' })).toBeNull()
+    expect(writeRow(crown, 0, 'round', 1, null, labels, 0).text).toBe('*k6, k2tog; rep from * to end.')
+    // Gone at both edges: where the round begins and ends.
+    const edges = gridFromRows(['.XXXXXXXXXXXXXX.', 'XXXXXXXXXXXXXXXX'], { '.': 255, X: 0 })
+    expect(writeRow(edges, 0, 'round', 1, null, labels, 0).text).toBe('ssk, k12, k2tog.')
+    const growing = gridFromRows(['XXXXXXXXXX', '.XXXX.XXXX'], { '.': 255, X: 0 })
+    expect(writeRow(growing, 0, 'round', 1, null, labels, 0).text).toBe('*k4, M1; rep from * to end.')
+    // More than a stitch or two gone together is cast off (or put on hold), as the pattern's shaping says: just how many.
     const uneven = gridFromRows(['..XXXXXXXXXXX...', 'XXXXXXXXXXXXXXXX'], { '.': 255, X: 0 })
-    expect(writeRow(uneven, 0, 'round', 1, null, labels, 0).text).toBe('Decrease 5 sts evenly.')
-    const growing = gridFromRows(['XXXXXXXXXXXX', '..XXXXXXXX..'], { '.': 255, X: 0 })
-    expect(writeRow(growing, 0, 'round', 1, null, labels, 0).text).toBe('*k2, M1; rep from * to end.')
+    expect(writeRow(uneven, 0, 'round', 1, null, labels, 0).text).toBe('5 sts fewer than the round below, as the shaping says: k11.')
   })
 })
 
@@ -129,5 +132,31 @@ describe('long floats, described by their lengths', () => {
     expect(describeRow([float(1, 8), float(1, 9), float(1, 8)], yarns, gauge, 'cm')).toBe('3 Madder floats: 8–9 sts (3 cm)')
     expect(describeRow([float(1, 8), float(1, 14)], yarns, gauge, 'cm')).toBe('2 Madder floats: 8–14 sts (3–5 cm)')
     expect(describeRow([float(0, 7)], yarns, gauge, 'in')).toBe('Natural float: 7 sts (1 in)')
+  })
+})
+
+describe('published patterns, round by round', () => {
+  it('writes every shaped round where the chart shapes it', async () => {
+    const { publishedPattern } = await import('./published-patterns.fixture')
+    const { layoutSchematic } = await import('./pieces')
+    const { rowNumber } = await import('./numbering')
+    const written = (id: 'hat' | 'sweater') => {
+      const template = publishedPattern(id)
+      const { outline } = layoutSchematic(template.spec as never, template.gauge!, 'round')
+      const chart = { ...outline, cells: outline.cells.map((c) => (c === 255 ? 255 : 0)) }
+      const labels = yarnLabels([1], 0)
+      return new Map(Array.from({ length: chart.height }, (_, y) => [rowNumber(y, chart.height), writeRow(chart, y, 'round', 1, null, labels, 0).text]))
+    }
+    const hat = written('hat')
+    for (const text of hat.values()) expect(text).not.toMatch(/as the shaping says/)
+    // The Clayoquot's crown, as the pattern has it: a set-up round, then 8 sections, a stitch from each every other round.
+    expect(hat.get(43)).toBe('*k27, k2tog; rep from * to end.')
+    expect(hat.get(45)).toBe('*k12, k2tog; rep from * to end.')
+    expect(hat.get(10)).toBe('*k13, M1, k14, M1; rep from * to end.')
+    expect(hat.get(64)).toBe('*k2tog; rep from * to end.')
+    const sweater = written('sweater')
+    // All but the round the sleeves go on hold, which the pattern's steps say.
+    expect([...sweater.values()].filter((text) => /as the shaping says/.test(text))).toHaveLength(1)
+    expect(sweater.get(9)).toBe('*k3, M1; rep from * to end.')
   })
 })

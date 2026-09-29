@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SignInRouteImport } from './routes/sign-in'
+import { Route as TryRouteImport } from './routes/try'
 import { Route as PProjectIdRouteImport } from './routes/p.$projectId'
 import { Route as PProjectIdIndexRouteImport } from './routes/p.$projectId.index'
 import { Route as PProjectIdKnitRouteImport } from './routes/p.$projectId.knit'
@@ -29,6 +30,11 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const SignInRoute = SignInRouteImport.update({
   id: '/sign-in',
   path: '/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TryRoute = TryRouteImport.update({
+  id: '/try',
+  path: '/try',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PProjectIdRoute = PProjectIdRouteImport.update({
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
+  '/try': typeof TryRoute
   '/p/$projectId': typeof PProjectIdRouteWithChildren
   '/p/$projectId/knit': typeof PProjectIdKnitRoute
   '/p/$projectId/': typeof PProjectIdIndexRoute
@@ -59,6 +66,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
+  '/try': typeof TryRoute
   '/p/$projectId/knit': typeof PProjectIdKnitRoute
   '/p/$projectId': typeof PProjectIdIndexRoute
 }
@@ -67,6 +75,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
+  '/try': typeof TryRoute
   '/p/$projectId': typeof PProjectIdRouteWithChildren
   '/p/$projectId/knit': typeof PProjectIdKnitRoute
   '/p/$projectId/': typeof PProjectIdIndexRoute
@@ -77,6 +86,7 @@ export interface FileRouteTypes {
     | '/'
     | '/reset-password'
     | '/sign-in'
+    | '/try'
     | '/p/$projectId'
     | '/p/$projectId/knit'
     | '/p/$projectId/'
@@ -85,6 +95,7 @@ export interface FileRouteTypes {
     | '/'
     | '/reset-password'
     | '/sign-in'
+    | '/try'
     | '/p/$projectId/knit'
     | '/p/$projectId'
   id:
@@ -92,6 +103,7 @@ export interface FileRouteTypes {
     | '/'
     | '/reset-password'
     | '/sign-in'
+    | '/try'
     | '/p/$projectId'
     | '/p/$projectId/knit'
     | '/p/$projectId/'
@@ -101,6 +113,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignInRoute: typeof SignInRoute
+  TryRoute: typeof TryRoute
   PProjectIdRoute: typeof PProjectIdRouteWithChildren
 }
 
@@ -125,6 +138,13 @@ declare module '@tanstack/react-router' {
       path: '/sign-in'
       fullPath: '/sign-in'
       preLoaderRoute: typeof SignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/try': {
+      id: '/try'
+      path: '/try'
+      fullPath: '/try'
+      preLoaderRoute: typeof TryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/p/$projectId': {
@@ -169,6 +189,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignInRoute: SignInRoute,
+  TryRoute: TryRoute,
   PProjectIdRoute: PProjectIdRouteWithChildren,
 }
 export const routeTree = rootRouteImport

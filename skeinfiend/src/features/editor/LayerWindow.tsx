@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useDeleteMotif, useSaveMotif } from '@/data/library'
+import { useDeleteMotif, useSaveMotif, useSavedMotifs } from '@/data/library'
 import { usePhone, useTouch } from '@/ui/use-phone'
-import { bandStitchTile, bandSpan, bandTile, MAX_SCALE, motifPoint, SCALE_STEP, placementOf, scaleOf, scaledMotif, type Band, type Placement } from '@/domain/bands'
+import { bandStitchTile, bandSpan, bandTile, MAX_SCALE, motifPoint, SCALE_STEP, placementOf, scaleOf, scaledMotif, scaledStitches, type Band, type Placement } from '@/domain/bands'
 import { adjustBand, duplicateBand, renameBand, resizeBandMotif, setPlacement, setScale, updateBand } from '@/domain/edits'
 import { cellAspect } from '@/domain/gauge'
 import { NONE, type Grid } from '@/domain/grid'
 import type { Project } from '@/domain/project'
-import { toSavedMotif } from '@/domain/saved-motifs'
+import { editedAt, toSavedMotif } from '@/domain/saved-motifs'
 import { rotateClockwise } from '@/domain/transform'
 import type { EditorState, EditorStore } from '@/editor/store'
 import { ChartCanvas } from '@/render/ChartCanvas'
@@ -150,7 +150,7 @@ function Palette() {
           title={i < 9 ? `${y.name} (${i + 1})` : y.name} style={{ background: y.hex }}
           onClick={() => store.chooseYarn(i)} />
       ))}
-      <button type="button" role="radio" aria-checked={brush === 'yarn' && tool === 'eraser'} aria-label="Erase" title="Erase (E, or right-click)" data-eraser
+      <button type="button" role="radio" aria-checked={brush === 'yarn' && tool === 'eraser'} aria-label="Erase" title="Erase (E)" data-eraser
         onClick={() => store.setMotifTool('eraser')}>
         <Icon name="eraser" />
       </button>
@@ -297,6 +297,11 @@ function Actions({ band }: { band: Band }) {
   const project = useProject()
   const saveMotif = useSaveMotif()
   const [saved, setSaved] = useState(false)
+  const { data: savedMotifs = [] } = useSavedMotifs()
+  // The knitter's own motif it came from, if it's not behind the library's (changed from another chart since):
+  // saved over, that would be lost, so a layer that's behind saves as a new motif instead.
+  const mine = savedMotifs.find((m) => m.id === band.fromLibrary?.motifId)
+  const own = mine && editedAt(mine) <= band.fromLibrary!.editedAt ? mine : undefined
   const set = (changes: Partial<Band>) => store.update((p) => adjustBand(p, band.id, changes))
   const span = bandSpan(band, project.outline.height)
 
@@ -315,12 +320,17 @@ function Actions({ band }: { band: Band }) {
       }}>
         <Icon name="copy" /> Duplicate
       </button>
-      <button type="button" disabled={saved} title="Save it to your colorwork motifs, for any chart" onClick={() => {
-        const motif = toSavedMotif(scaledMotif(band), project.background, crypto.randomUUID(), band.name, Date.now())
+      <button type="button" disabled={saved} title={own ? `Update “${own.name}” in your motifs` : 'Save to your motifs'} onClick={() => {
+        // Made from one of their own motifs, it's saved over that one (charts using it are offered the new version);
+        // otherwise it's a new one.
+        const now = Date.now()
+        const motif = own
+          ? { ...toSavedMotif(scaledMotif(band), project.background, own.id, own.name, own.savedAt, scaledStitches(band)), editedAt: now }
+          : toSavedMotif(scaledMotif(band), project.background, crypto.randomUUID(), band.name, now, scaledStitches(band))
         saveMotif.mutate(motif, {
           onSuccess: () => {
             // The layer is now the library motif's: edits to it there are offered here.
-            store.updateQuietly((p) => updateBand(p, band.id, { fromLibrary: { motifId: motif.id, editedAt: motif.savedAt } }))
+            store.updateQuietly((p) => updateBand(p, band.id, { fromLibrary: { motifId: motif.id, editedAt: motif.editedAt ?? motif.savedAt } }))
             setSaved(true)
             setTimeout(() => setSaved(false), 2000)
           },

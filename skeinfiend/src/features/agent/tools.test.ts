@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { NONE } from '@/domain/grid'
 import { rowRuns } from '@/domain/numbering'
 import { PURL, workedAs } from '@/domain/stitches'
+import { ribRows } from '@/domain/pieces'
 import { composeChart, composeStitches, createProject } from '@/domain/project'
 import { EditorStore } from '@/editor/store'
 import { QueryClient } from '@tanstack/react-query'
@@ -41,7 +43,7 @@ describe('agent tools', () => {
     const { store, call } = setup()
     await call('set-yarns', { yarns: [{ yarn: 'Charcoal', name: 'Canary', hex: '#f2cf1d' }] })
     const added = await call('add-layer', { name: 'Chart A', rows: ['.X..', 'X.X.', '.X..'], key: { '.': 'main', X: 'Canary' }, placement: 'row', bottomRow: 13 })
-    expect(added.text).toContain('rows 13–15')
+    expect(added.text).toContain('rounds 13–15')
     // Knitted row 14 (the chart's middle row) has Canary on stitches 1 and 3 of every repeat, from the left as drawn.
     const { width, height } = store.project.outline
     const chart = composeChart(store.project)
@@ -67,36 +69,48 @@ describe('agent tools', () => {
     const { store, call } = setup()
     await call('add-layer', { name: 'B', rows: ['XO'], key: { X: 'Charcoal', O: 'Madder' }, placement: 'row', bottomRow: 5 })
     const moved = await call('update-layer', { layer: 'b', bottomRow: 20, rows: 4, recolor: { from: 'Madder', to: 'Indigo' } })
-    expect(moved.text).toMatch(/repeated across rows 20–23/)
+    expect(moved.text).toMatch(/tiled over rounds 20–23/)
     expect([...new Set(store.project.bands[0]!.motif.cells)].sort()).toEqual([1, 3])
   })
 
   it('knits purl stitches from the key, and reads them back', async () => {
     const { store, call } = setup()
-    // A seed-stitch band in the main color, with a Madder stitch purled.
-    await call('add-layer', { name: 'Seed', rows: ['.-', '-M'], key: { '.': 'main', '-': 'main purl', M: 'Madder purl' }, placement: 'row', bottomRow: 3 })
+    // A seed-stitch band in the main color, with a Madder stitch purled: above the hem's rib, which is purled too.
+    await call('add-layer', { name: 'Seed', rows: ['.-', '-M'], key: { '.': 'main', '-': 'main purl', M: 'Madder purl' }, placement: 'row', bottomRow: 30 })
     const stitches = composeStitches(store.project)!
     const { width, height } = store.project.outline
     // Four stitches from the middle, in from the brim's shaping.
     const middle = width / 2
     const at = (row: number) => Array.from(stitches.cells.slice((height - row) * width + middle, (height - row) * width + middle + 4))
     // The chart's bottom row is all purls; the one above alternates.
-    expect(at(3)).toEqual([1, 1, 1, 1])
-    expect(at(4).join('')).toMatch(/^(0101|1010)$/)
+    expect(at(30)).toEqual([1, 1, 1, 1])
+    expect(at(31).join('')).toMatch(/^(0101|1010)$/)
     // Runs keep each stitch as charted, in the round or flat; worked from the wrong side, a charted purl is knitted.
-    const purled = (construction: 'round' | 'flat') => rowRuns(composeChart(store.project), height - 4, construction, 1, stitches)
+    const purled = (construction: 'round' | 'flat') => rowRuns(composeChart(store.project), height - 31, construction, 1, stitches)
       .reduce((n, r) => n + (r.kind === 'stitches' && r.stitch === PURL ? r.count : 0), 0)
-    const charted = Array.from(stitches.cells.slice((height - 4) * width, (height - 3) * width)).filter((c) => c === PURL).length
+    const charted = Array.from(stitches.cells.slice((height - 31) * width, (height - 30) * width)).filter((c) => c === PURL).length
     expect([purled('round'), purled('flat')]).toEqual([charted, charted])
     expect([workedAs(PURL, true), workedAs(PURL, false), workedAs(2, false)]).toEqual(['p', 'k', 'p1 tbl'])
     const pattern = JSON.parse((await call('get-chart')).text)
-    expect(pattern.layers[0]).toEqual(expect.objectContaining({ chart: ['.X', 'XO'], key: { '.': 'main', X: 'main purl', O: 'Madder purl' } }))
+    expect(pattern.layers[0]).toEqual(expect.objectContaining({ chart: ['.-', '-m'], key: { '.': 'main', '-': 'main purl', m: 'Madder purl' } }))
   })
 
-  it('leaves the stitches alone when nothing is purled', async () => {
+  it('leaves the stitches alone when nothing is purled, but the rib', async () => {
     const { store, call } = setup()
     await call('add-layer', { name: 'A', rows: ['X.'], key: { '.': 'main', X: 'Madder' }, placement: 'row' })
-    expect(composeStitches(store.project)).toBeNull()
+    const stitches = composeStitches(store.project)!
+    const { width, height } = store.project.outline
+    // The hem's rib is k1, p1; above it, everything is knit.
+    const ribTop = Math.max(...ribRows(store.project.piece, store.project.gauge, store.project.construction).map((r) => r.to))
+    expect(ribTop).toBeGreaterThan(0)
+    const purledRows = new Set<number>()
+    stitches.cells.forEach((c, i) => {
+      if (c === PURL) purledRows.add(height - Math.floor(i / width))
+    })
+    expect(Math.max(...purledRows)).toBeLessThanOrEqual(ribTop)
+    // Written as the rib it is.
+    const rows = (await call('get-written-rows', { from: 1, to: 1 })).text
+    expect(rows).toMatch(/k1 MC, p1 MC|k1, p1/)
   })
 
   it("shapes a piece from a pattern's stitch counts, and says where a repeat won't go evenly around", async () => {
@@ -158,8 +172,9 @@ describe('agent tools', () => {
     const band = store.project.bands[0]!
     expect(Array.from(band.stitches!.cells)).toEqual([0, 1, 2, 4, 6, 5, 7, 9])
     const layer = JSON.parse((await call('get-chart')).text).layers[0]
-    expect(layer.chart).toEqual(['.XOA', 'BCDE'])
-    expect(layer.key).toEqual({ '.': 'main', X: 'main purl', O: 'main k1 tbl', A: 'main k2tog', B: 'main M1', C: 'main ssk', D: 'Spanish Coin M1 p-st', E: 'Charcoal bobble' })
+    // Written back readably: "." main, "-" a purl in it, other stitches the next spare letters.
+    expect(layer.chart).toEqual(['.-XO', 'ABCD'])
+    expect(layer.key).toEqual({ '.': 'main', '-': 'main purl', X: 'main k1 tbl', O: 'main k2tog', A: 'main M1', B: 'main ssk', C: 'Spanish Coin M1 p-st', D: 'Charcoal bobble' })
     expect((await call('add-layer', { name: 'Bad', placement: 'tile', rows: ['z'], key: { z: 'k3tog' } })).text).toMatch(/isn't a yarn or a stitch/)
     // A misread fixed in place.
     await call('update-layer', { layer: 'Waves', chart: { rows: ['-'], key: { '-': 'purl' } } })
@@ -204,7 +219,9 @@ describe('agent tools', () => {
     const middle = Math.floor(width / 2)
     expect((await call('paint-stitches', { stitches: [{ row: 5, stitch: middle, yarn: 'Madder', type: 'purl' }] })).text).toMatch(/^Painted 1 of 1/)
     const madder = store.project.yarns.findIndex((y) => y.name === 'Madder')
-    const [x, y] = [width - middle, height - 5]
+    // Stitch numbers count along the row's own stitches, from its right end, where it begins.
+    const y = height - 5
+    const x = Array.from({ length: width }, (_, i) => width - 1 - i).filter((i) => store.project.outline.cells[y * width + i] !== NONE)[middle - 1]!
     expect(store.chart().cells[y * width + x]).toBe(madder)
     expect(store.stitches()!.cells[y * width + x]).toBe(1)
     expect((await call('paint-stitches', { stitches: [{ row: 5, stitch: middle }] })).error).toBe(true)
@@ -257,11 +274,14 @@ describe('agent tools', () => {
     const widths = Object.fromEntries(project.piece.measurements.map((m) => [m.name, m]))
     expect(widths.Band).toMatchObject({ height: 5, width: 60 })
     expect(widths.Hem).toBeDefined()
-    // The pattern's own counts, at the new gauge: 50 rows at 30 per 10 cm, 100 stitches at 24.
-    expect(widths.Crown!.height).toBeCloseTo(50 / 3)
+    // The pattern's own counts, at the new gauge: 100 stitches at 24 per 10 cm, reached on row 50 (not past it).
+    expect(widths.Crown!.height).toBeLessThan(50 / 3)
+    expect(widths.Crown!.height).toBeGreaterThan(49 / 3)
     expect(widths.Crown!.width).toBeCloseTo(100 / 2.4)
     const chart = JSON.parse((await call('get-chart')).text)
     expect(chart.piece.widths.map((w: { name: string }) => w.name)).toContain('Band')
+    // Read back as it was given.
+    expect(chart.piece.widths.find((w: { name: string }) => w.name === 'Crown').row).toBe(50)
     expect(chart.floatLimit).toMatch(/^3 cm/)
     // One undo puts it all back.
     await call('undo')
@@ -331,6 +351,174 @@ describe('agent tools', () => {
     expect(composeChart(store.project).cells).toContain(madder)
     await call('paint-stitches', { stitches: [{ row: 5, stitch: 5, erase: true }] })
     expect(composeChart(store.project).cells).not.toContain(madder)
+  })
+})
+
+describe('agent tools, checked like a careful knitter would', () => {
+  it('refuses numbers that are not numbers, rather than storing them', async () => {
+    const { store, call } = setup()
+    const bands = store.project.bands.length
+    const bad = await call('add-layer', { rows: ['X.'], key: { X: 'Madder', '.': 'main' }, placement: 'row', bottomRow: 'ten' })
+    expect(bad.error).toBe(true)
+    expect(bad.text).toMatch(/bottomRow.*must be a number/)
+    expect(store.project.bands.length).toBe(bands)
+    expect((await call('paint-stitches', { stitches: [{ row: 5, stitch: 2.5, yarn: 'Madder' }] })).error).toBe(true)
+  })
+
+  it('finds a layer by part of its name, when only one has it', async () => {
+    const { call } = setup()
+    await call('add-layer', { name: 'DMC 1922, plate 1: triangles', rows: ['X.'], key: { X: 'Madder', '.': 'main' }, placement: 'row', bottomRow: 20 })
+    await call('add-layer', { name: 'DMC 1922, plate 1: zigzag', rows: ['X.'], key: { X: 'Madder', '.': 'main' }, placement: 'row', bottomRow: 30 })
+    expect((await call('update-layer', { layer: 'triangles', gap: 1 })).error).toBe(false)
+    const ambiguous = await call('update-layer', { layer: 'plate 1', gap: 1 })
+    expect(ambiguous.error).toBe(true)
+    expect(ambiguous.text).toMatch(/more than one/)
+  })
+
+  it('refuses inputs a tool doesn’t take, and says when a change changes nothing', async () => {
+    const { call } = setup()
+    await call('add-layer', { name: 'Dots', rows: ['X.'], key: { X: 'Madder', '.': 'main' }, placement: 'row', bottomRow: 30 })
+    const misnamed = await call('update-layer', { layer: 'Dots', spacing: 2 })
+    expect(misnamed.error).toBe(true)
+    expect(misnamed.text).toMatch(/doesn’t take `spacing`: nothing was changed\. It takes .*`gap`/)
+    const same = await call('update-layer', { layer: 'Dots', visible: true })
+    expect(same.text).toMatch(/^Nothing changed in "Dots": it already had the `visible` given/)
+    expect((await call('update-layer', { layer: 'Dots', gap: 2 })).text).not.toMatch(/Nothing changed/)
+  })
+
+  it('saves a motif’s purls with it, and places them again', async () => {
+    const { library, saved } = memoryLibrary()
+    const { store, call } = setup(library)
+    await call('add-layer', { name: 'Ridge', rows: ['XX', '--'], key: { X: 'Madder', '-': 'main purl' }, placement: 'row', bottomRow: 30 })
+    await call('update-library', { save: 'Ridge' })
+    const motif = [...saved.values()][0]!
+    expect(motif.stitches?.cells.filter((c) => c !== 0)).toHaveLength(2)
+    expect(JSON.parse((await call('get-library')).text).mine[0]).toMatchObject({ stitches: ['..', 'pp'], stitchKey: { p: 'purl' } })
+    await call('add-layer', { name: 'Ridge again', motif: 'Ridge', placement: 'row', bottomRow: 40 })
+    const again = store.project.bands.find((b) => b.name === 'Ridge again')!
+    expect([...again.stitches!.cells]).toEqual([...motif.stitches!.cells])
+    // Saving it again unchanged isn't a new version; a stitch changed is.
+    expect((await call('update-library', { save: 'Ridge again' })).text).toMatch(/Nothing changed/)
+    await call('update-layer', { layer: 'Ridge again', chart: { rows: ['XX', '-.'], key: { X: 'Madder', '-': 'main purl', '.': 'main' } } })
+    expect((await call('update-library', { save: 'Ridge again' })).text).toMatch(/Updated/)
+  })
+
+  it('saves a layer over the motif it came from, so charts using it are offered the new version', async () => {
+    const { library, saved } = memoryLibrary()
+    const { store, call } = setup(library)
+    await call('add-layer', { name: 'Tree', rows: ['.X.', 'XXX'], key: { X: 'Madder', '.': 'main' }, placement: 'row', bottomRow: 20 })
+    expect((await call('update-library', { save: 'Tree' })).text).toMatch(/Saved "Tree"/)
+    const [motif] = [...saved.values()]
+    await call('update-layer', { layer: 'Tree', chart: { rows: ['XXX', 'XXX'], key: { X: 'Madder' } } })
+    const again = await call('update-library', { save: 'Tree' })
+    expect(again.text).toMatch(/Updated "Tree"/)
+    expect(saved.size).toBe(1)
+    expect(saved.get(motif!.id)!.editedAt).toBeGreaterThan(0)
+    // Renamed with `name`: still the one motif.
+    await call('update-library', { save: 'Tree', name: 'Pine' })
+    expect([...saved.values()].map((m) => m.name)).toEqual(['Pine'])
+    expect(store.project.bands.find((b) => b.name === 'Tree')!.fromLibrary!.motifId).toBe(motif!.id)
+  })
+
+  it('keeps a layer its height: moved past the top, it is refused rather than cut short', async () => {
+    const { store, call } = setup()
+    await call('add-layer', { name: 'Tall', rows: ['X', 'X', 'X', 'X'], key: { X: 'Madder' }, placement: 'row', bottomRow: 3 })
+    const height = store.project.outline.height
+    const moved = await call('update-layer', { layer: 'Tall', bottomRow: height - 1 })
+    expect(moved.error).toBe(true)
+    expect(moved.text).toMatch(/can be 1 to/)
+    expect((await call('update-layer', { layer: 'Tall', bottomRow: 10 })).text).toMatch(/10–13/)
+  })
+
+  it('lets two yarns swap names in one call', async () => {
+    const { store, call } = setup()
+    await call('set-yarns', { yarns: [{ yarn: 'Madder', name: 'Indigo' }, { yarn: 'Indigo', name: 'Madder' }] })
+    expect(store.project.yarns.map((y) => y.name)).toEqual(['Natural', 'Charcoal', 'Indigo', 'Madder'])
+  })
+
+  it("won't save a layer over a newer version of its library motif", async () => {
+    const { library, saved } = memoryLibrary()
+    const { call } = setup(library)
+    await call('add-layer', { name: 'Tree', rows: ['.X.', 'XXX'], key: { X: 'Madder', '.': 'main' }, placement: 'row', bottomRow: 20 })
+    await call('update-library', { save: 'Tree' })
+    const [motif] = [...saved.values()]
+    // Changed from another chart since.
+    saved.set(motif!.id, { ...motif!, grid: { ...motif!.grid, cells: motif!.grid.cells.map(() => 0) }, editedAt: Date.now() + 1000 })
+    const stale = await call('update-library', { save: 'Tree' })
+    expect(stale.error).toBe(true)
+    expect(stale.text).toMatch(/newer version/)
+  })
+
+  it("puts a pattern's counts on the rounds it says: 96 after round 50 is 96 on round 50", async () => {
+    const { call } = setup()
+    await call('shape-piece', { name: 'Hat', worked: 'round', gauge: { stitches: 26, rows: 28 }, shape: [{ row: 0, stitches: 128 }, { row: 42, stitches: 128 }, { row: 50, stitches: 96 }, { row: 60, stitches: 16 }] })
+    const rows = (await call('get-written-rows', { from: 42, to: 60 })).text
+    expect(rows).toMatch(/Rnds 42–43: k128\. \(128 sts\)/)
+    expect(rows).toMatch(/Rnd 50: [^\n]*\(96 sts\)/)
+    expect(rows).toMatch(/Rnd 60: [^\n]*\(16 sts\)/)
+    // As a pattern works them: 8 every other round to round 50, then 8 every round, a stitch in each of 8 sections.
+    expect(rows).toMatch(/Rnd 44: \*k14, k2tog; rep from \* to end\. \(120 sts\)/)
+    expect(rows).toMatch(/Rnd 51: \*k10, k2tog; rep from \* to end\. \(88 sts\)/)
+  })
+
+  it('shapes a crown at the points the pattern says, and writes it so', async () => {
+    const { call, store } = setup()
+    await call('shape-piece', { name: 'Hat', worked: 'round', gauge: { stitches: 24, rows: 30 }, shape: [{ row: 0, stitches: 120 }, { row: 40, stitches: 120 }, { row: 58, stitches: 12, sections: 6 }] })
+    const rows = (await call('get-written-rows', { from: 41, to: 58 })).text
+    expect(rows).toMatch(/Rnd 41: \*k18, k2tog; rep from \* to end\. \(114 sts\)/)
+    expect(rows).toMatch(/Rnd 58: \*k1, k2tog; rep from \* to end\. \(12 sts\)/)
+    const widths = JSON.parse((await call('get-chart')).text).piece.widths
+    expect(widths.at(-1).shapedAt).toBe('6 points around')
+    // The chart's wedges: on the top round, 2 stitches in each of 6 sections of 20.
+    const { outline } = store.project
+    const top = Array.from({ length: outline.width }, (_, x) => outline.cells[x] !== 255)
+    expect(top.filter(Boolean)).toHaveLength(12)
+    expect([0, 1, 2, 3, 4, 5].map((j) => top.slice(j * 20, j * 20 + 20).filter(Boolean).length)).toEqual([2, 2, 2, 2, 2, 2])
+    // Changed to 8 points, and back to the default.
+    await call('update-chart', { widths: [{ name: 'End', sections: 8 }] })
+    expect(JSON.parse((await call('get-chart')).text).piece.widths.at(-1).shapedAt).toBe('8 points around')
+    await call('update-chart', { widths: [{ name: 'End', sections: 0 }] })
+    expect(JSON.parse((await call('get-chart')).text).piece.widths.at(-1).shapedAt).toMatch(/\(the default\)/)
+    expect((await call('shape-piece', { name: 'Flat', worked: 'flat', gauge: { stitches: 24, rows: 30 }, shape: [{ row: 0, stitches: 60 }, { row: 10, stitches: 40, sections: 4 }] })).error).toBe(true)
+  })
+
+  it('keeps layers where they were when a shorter size is looked at, and back', async () => {
+    const { call } = setup()
+    await call('shape-piece', { name: 'Body', worked: 'round', gauge: { stitches: 22, rows: 30 }, sizes: [
+      { name: 'S', shape: [{ row: 0, stitches: 120 }, { row: 60, stitches: 120 }] },
+      { name: 'L', shape: [{ row: 0, stitches: 120 }, { row: 80, stitches: 120 }] },
+    ], size: 'L' })
+    await call('add-layer', { name: 'Band', rows: ['X.', '.X', 'X.'], key: { X: 'Madder', '.': 'main' }, placement: 'row', bottomRow: 70 })
+    const where = async () => JSON.parse((await call('get-chart')).text).layers[0].where as string
+    expect(await where()).toMatch(/70–72/)
+    await call('update-chart', { size: 'S' })
+    expect(await where()).toMatch(/58–60/)
+    await call('update-chart', { size: 'L' })
+    expect(await where()).toMatch(/70–72/)
+  })
+
+  it('tiles a motif over some rows only: from a round up to the top, off the rib', async () => {
+    const { store, call } = setup()
+    const added = await call('add-layer', { name: 'Lice', rows: ['X...', '..X.'], key: { X: 'Madder', '.': 'main' }, placement: 'tile', bottomRow: 30 })
+    const top = store.project.outline.height
+    expect(added.text).toContain(`tiled over rounds 30–${top}`)
+    expect((await call('update-layer', { layer: 'Lice', bottomRow: 40 })).text).toContain(`tiled over rounds 40–${top}`)
+  })
+
+  it('flags rows with more than two colors, and pattern colors too faint to read', async () => {
+    const { call } = setup()
+    await call('add-layer', { name: 'Three', rows: ['MI..'], key: { M: 'Madder', I: 'Indigo', '.': 'main' }, placement: 'row', bottomRow: 30 })
+    const chart = JSON.parse((await call('get-chart')).text)
+    expect(chart.tooManyColors[0]).toMatch(/^Round 30: 3 colors/)
+    const faint = await call('set-yarns', { yarns: [{ yarn: 'Madder', hex: '#f0e6d2' }] })
+    expect(faint.text).toMatch(/Low contrast: Madder on Natural/)
+  })
+
+  it('counts yarn for a motif duplicate stitched after knitting', async () => {
+    const { call } = setup()
+    await call('set-yarns', { yarns: [{ name: 'Fjord', hex: '#336699' }] })
+    await call('add-layer', { name: 'Star', rows: ['X'], key: { X: 'Fjord' }, placement: 'single', bottomRow: 20 })
+    expect((await call('estimate-yarn')).text).toMatch(/Fjord: about/)
   })
 })
 

@@ -31,7 +31,7 @@ describe('pattern instructions', () => {
     expect(steps.map((s) => `${s.where} · ${s.title}: ${s.text}`)).toEqual([
       'Round 1 · Cast on: Cast on 48 stitches and join to work in the round.',
       'Rounds 1–10 · Neck rib: Work in K1, P1 rib.',
-      'Rounds 12–35 · Top of neck rib to Chest: Increase 2 stitches every other round, 12 times.',
+      'Rounds 12–35 · Top of neck rib to Chest: Increase 1 stitch at each end of the round every other round, 12 times.',
       'Rounds 35–36 · Arm holes: Bind off 12 stitches for each. On round 36, cast on 12 stitches over each gap.',
       'Row 69 · Waist to Back: Bind off 20 stitches (10 stitches at each edge).',
       'Row 69 · Worked flat: Turn at the gap and work back and forth in rows, starting with a right-side row.',
@@ -88,7 +88,7 @@ describe('the Edinburgh template', () => {
     const template = publishedPattern('dog-sweater')
     const steps = patternSteps(template.spec as SchematicPiece, template.gauge!, 'round').map((s) => `${s.title}: ${s.text}`)
     expect(steps).toContain('Cast on: Cast on 48 stitches and join to work in the round.')
-    expect(steps).toContain('Top of neck rib to Chest: Increase 2 stitches every other round, 12 times.')
+    expect(steps).toContain('Top of neck rib to Chest: Increase 1 stitch at each end of the round every other round, 12 times.')
     expect(steps).toContain('Belly bind-off to Back: Bind off 20 stitches (10 stitches at each edge).')
     expect(steps).toContain('Worked flat: Turn at the gap and work back and forth in rows, starting with a right-side row.')
     expect(steps).toContain('Back to Tail: Decrease 1 stitch at each edge every other row, 12 times.')
@@ -111,8 +111,8 @@ describe('the Tin Can Knits templates', () => {
       'Rounds 1–9 · Brim rib: Work in K1, P1 rib.',
       'Round 10 · Top of rib to Body: Increase 8 stitches evenly.',
       'Round 43 · Start of crown to Crown set-up: Decrease 4 stitches evenly.',
-      'Rounds 44–59 · Crown set-up to Crown: Decrease 8 stitches every other round, 8 times.',
-      'Rounds 60–63 · Crown to Crown top: Decrease 8 stitches every round, 4 times.',
+      'Rounds 44–59 · Crown set-up to Crown: Decrease 8 stitches, 1 in each of 8 sections, every other round, 8 times.',
+      'Rounds 60–63 · Crown to Crown top: Decrease 8 stitches, 1 in each of 8 sections, every round, 4 times.',
       'Round 64 · Crown top to Top: Decrease 8 stitches evenly.',
       'Round 64 · Bind off: Bind off the remaining 8 stitches.',
     ])
@@ -123,7 +123,7 @@ describe('the Tin Can Knits templates', () => {
       'Round 1 · Cast on: Cast on 90 stitches and join to work in the round.',
       'Rounds 1–8 · Neck rib: Work in K1, P1 rib.',
       'Round 9 · Top of neck rib to Yoke: Increase 30 stitches evenly.',
-      'Rounds 10–41 · Yoke to End of raglan: Increase 8 stitches every other round, 16 times.',
+      'Rounds 10–41 · Yoke to End of raglan: Increase 8 stitches, 1 in each of 8 sections, every other round, 16 times.',
       'Round 60 · Underarm to Body: Put the sleeve stitches on hold, casting on at the underarms: 172 stitches remain.',
       'Rounds 144–155 · Hem rib: Work in K1, P1 rib.',
       'Round 155 · Bind off: Bind off the remaining 172 stitches.',

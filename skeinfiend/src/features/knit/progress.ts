@@ -22,7 +22,7 @@ function read(projectId: string): number | null {
 }
 
 /** The knitter's row, top-based (as the chart counts), and a way to move it. */
-export function useProgress(projectId: string, height: number): [number, (y: number) => void] {
+export function useProgress(projectId: string, height: number): [number, (y: number) => void, boolean, () => void] {
   const stored = useSyncExternalStore((l) => {
       listeners.add(l)
       return () => listeners.delete(l)
@@ -38,5 +38,15 @@ export function useProgress(projectId: string, height: number): [number, (y: num
     }
     for (const listener of listeners) listener()
   }, [projectId, height])
-  return [clamped, set]
+  // Every row knitted, the last one too: remembered as a row past the top.
+  const done = stored !== undefined && stored !== null && stored > height
+  const finish = useCallback(() => {
+    try {
+      localStorage.setItem(key(projectId), String(height + 1))
+    } catch {
+      // Not remembered, but finished for this page.
+    }
+    for (const listener of listeners) listener()
+  }, [projectId, height])
+  return [clamped, set, done, finish]
 }

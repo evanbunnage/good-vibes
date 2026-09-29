@@ -28,7 +28,7 @@ export function FloatsTool({ className }: { className?: string }) {
   const issues = useEditor(selectIssues)
   const showing = useEditor(selectShowing)
   return (
-    <button type="button" className={className} aria-pressed={showing} title={showing ? 'Hide the floats' : 'Show the floats on the back'}
+    <button type="button" className={className} aria-pressed={showing} title={showing ? 'Hide floats' : 'Show floats'}
       onClick={() => {
         store.toggleFloats()
         if (showing) store.clearIssueRow()
@@ -67,11 +67,11 @@ function FloatsPanel() {
       {/* The rule, read-only: floats past about an inch, as knitters go by. */}
       <div className={styles.floatsHead}>
         <p className={styles.floatsLimit}>
-          Floats over {formatShortLength(limitCm, units)} <span className={styles.floatsNote}>({rules.maxFloat} sts)</span>
+          Floats over {formatShortLength(limitCm, units)} <span className={styles.floatsNote}>(over {rules.maxFloat} sts)</span>
         </p>
         {/* Every row seen and fine: all set aside in one step, each back if it changes. */}
         {rows.length > 1 && (
-          <button type="button" className={styles.floatsDismiss} title="Hidden until their rows change"
+          <button type="button" className={styles.floatsDismiss} title="Ignore until changed"
             onClick={() => {
               store.clearIssueRow()
               store.peekAtRow(null)
@@ -91,7 +91,7 @@ function FloatsPanel() {
                 <span>{describeRow(rowIssues, project.yarns, gauge, units)}</span>
               </button>
               {/* Seen, and fine as it is: set aside until the row changes. */}
-              <button type="button" className={styles.floatsDismiss} aria-label={`Ignore row ${rowNumber(y, project.outline.height)}`} title="Hidden until this row changes"
+              <button type="button" className={styles.floatsDismiss} aria-label={`Ignore row ${rowNumber(y, project.outline.height)}`} title="Ignore until changed"
                 onClick={() => {
                   if (y === current) store.clearIssueRow()
                   store.peekAtRow(null)

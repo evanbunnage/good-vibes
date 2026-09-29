@@ -3,7 +3,7 @@ import { rowsPerCm, sameGauge, stitchesPerCm, type Gauge } from './gauge'
 import { NONE, resizeGrid, type Grid } from './grid'
 import { MAX_YARNS, remapAfterRemoval, STARTER_YARNS, type Yarn } from './palette'
 import type { PieceSize, Project, ProjectPiece, Swatch } from './project'
-import { bandTile, centeredOffset, centeredX, createBand, mapMotifs, MAX_SCALE, motifYarns, nextBandRows, SCALE_STEP, scaledSize, scaleOf, sourceIndex, type Band, type Placement } from './bands'
+import { bandTile, centeredOffset, centeredX, createBand, mapMotifs, MAX_SCALE, motifYarns, nextBandRows, SCALE_STEP, scaledMotif, scaledSize, scaleOf, sourceIndex, type Band, type Placement } from './bands'
 import { editedAt, motifInYarns, type SavedMotif } from './saved-motifs'
 import { buildOutline, type Construction, type SchematicPiece } from './pieces'
 
@@ -51,8 +51,11 @@ function reshape(project: Project, outline: Grid, gauge = project.gauge): Projec
     let next = band
     if (band.rows) {
       const span = band.rows.bottom - band.rows.top
-      const bottom = Math.min(outline.height - 1, Math.max(span, fromBottom(rowsUp(band.rows.bottom))))
-      next = { ...next, rows: { top: bottom - span, bottom } }
+      // Where it's meant to be: where it was, or where a taller size had it before a shorter one moved it down.
+      const held = band.heldUp && band.heldUp.bottom === band.rows.bottom ? band.heldUp.up : rowsUp(band.rows.bottom)
+      const bottom = Math.min(outline.height - 1, Math.max(span, fromBottom(held)))
+      const { heldUp: _, ...rest } = next
+      next = { ...rest, rows: { top: bottom - span, bottom }, ...(fromBottom(held) !== bottom && { heldUp: { up: held, bottom } }) }
     }
     if (band.once) {
       const width = bandTile(band).width
@@ -120,6 +123,19 @@ export function schematicOf(project: Project): SchematicPiece {
   return schematic
 }
 
+/**
+ * A chart as its schematic lays out now: one saved before shaping in the
+ * round was charted where it's worked (a crown's wedges, not steps at the
+ * edges) takes the new outline, when it's the same size, so nothing on it
+ * moves. Otherwise it's as it was.
+ */
+export function withCurrentOutline(project: Project): Project {
+  const outline = buildOutline(schematicOf(project), project.gauge, project.construction)
+  const was = project.outline
+  if (outline.width !== was.width || outline.height !== was.height || outline.cells.every((c, i) => c === was.cells[i])) return project
+  return { ...project, outline }
+}
+
 /** Changes the schematic, rebuilding the outline from it at the gauge. */
 export function setSchematic(project: Project, schematic: SchematicPiece): Project {
   const { name, credit } = project.piece
@@ -149,7 +165,11 @@ export function takeLibraryVersion(project: Project, bandId: string, saved: Save
   if (!band) return project
   const first = motifYarns(band.motif).find((y) => y !== project.background) ?? (project.background + 1) % project.yarns.length
   const motif = motifInYarns(saved.grid, project.yarns.length, project.background, first)
-  const updated = adjustBand(project, bandId, { motif, details: undefined })
+  // Saved from a layer at 2× (say), the motif is already that size: taken at 1×, not doubled again.
+  const scaled = scaledMotif(band)
+  const alreadyScaled = scaleOf(band) > 1 && saved.grid.width === scaled.width && saved.grid.height === scaled.height
+  // Its stitches too (a purl ridge, twisted stitches): the saved version's, or all knit if it has none.
+  const updated = adjustBand(project, bandId, { motif, stitches: saved.stitches, details: undefined, ...(alreadyScaled && { scale: 1 }) })
   return updateBand(updated, bandId, { fromLibrary: { motifId: saved.id, editedAt: editedAt(saved) } })
 }
 
@@ -163,6 +183,7 @@ export function addLibraryMotif(project: Project, saved: SavedMotif, bandId: str
   const rows = nextBandRows(project.bands, project.outline.height, motif.height)
   const band: Band = {
     ...createBand(bandId, saved.name, motif, rows),
+    ...(saved.stitches && { stitches: saved.stitches }),
     offsetX: centeredOffset(project.outline.width, motif.width, 0),
     fromLibrary: { motifId: saved.id, editedAt: editedAt(saved) },
   }

@@ -15,6 +15,26 @@
   background: var(--surface);
 }
 
+/* The size being knitted, as the editor's size picker. */
+.size {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+
+  & select {
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-s);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    font-weight: 500;
+  }
+}
+
 .title {
   flex: 1;
   min-inline-size: 0;
@@ -212,3 +232,18 @@
 }
 
 .show { color: var(--accent) !important; font-size: 0.8125rem; }
+
+/* After a tap on the chart jumped rounds: the one it left, a tap away. */
+.backTo {
+  justify-self: start;
+  padding: 0.3rem 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+
+  &:hover { text-decoration: underline; }
+}
+

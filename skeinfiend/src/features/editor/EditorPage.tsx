@@ -8,7 +8,7 @@ import { cellAspect, CM_PER_INCH, formatLength, heightCm, rowsPerCm, stitchesPer
 import type { RowIssue } from '@/domain/floats'
 import { floatRulesOf, type Project } from '@/domain/project'
 import { getUnits, useUnits } from '@/features/pieces/units'
-import { rowNumber, stitchNumber } from '@/domain/numbering'
+import { rowNumber, stitchOnRow } from '@/domain/numbering'
 import { bandSpan, bandTile, bandTiles, isArranged, type Band } from '@/domain/bands'
 import { getCell, NONE } from '@/domain/grid'
 import { KNIT, stitchType } from '@/domain/stitches'
@@ -48,7 +48,7 @@ function StitchesTool() {
   const showing = useEditor(selectStitchesShown)
   return (
     <button type="button" className={styles.tool} aria-pressed={showing} aria-label={showing ? 'Hide stitches' : 'Show stitches'}
-      title={showing ? 'Hide stitches' : 'Show stitches: purls, twisted stitches, increases'}
+      title={showing ? 'Hide stitches' : 'Show stitches'}
       onClick={() => store.toggleStitches()}>
       <Icon name="stitches" />
       <span aria-hidden>Stitches</span>
@@ -192,7 +192,7 @@ function SizePicker() {
   if (!sizes || sizes.length < 2) return null
   const unpicked = project.size === undefined
   return (
-    <label className={styles.sizePicker} data-unpicked={unpicked || undefined} title={unpicked ? 'Showing the first size: pick yours' : 'Size'}>
+    <label className={styles.sizePicker} data-unpicked={unpicked || undefined} title={unpicked ? 'Choose your size' : 'Size'}>
       <span>Size</span>
       <select value={sizeIndex(project)} aria-label="Size"
         onFocus={() => unpicked && store.updateQuietly((p) => switchSize(p, sizeIndex(p)))}
@@ -227,7 +227,7 @@ function ViewControls({ canvas, phone }: { canvas: React.RefObject<ChartCanvasHa
       <div className={styles.toolStack}>
         {/* What's shown over the chart, on or off, together or apart. (Sizes are dragged: not on a phone.) */}
         {!phone && <div className={styles.toolGroup} role="group" aria-label="Views">
-          <button type="button" className={styles.tool} aria-pressed={sizing} title={sizing ? 'Hide the sizes' : 'Show the sizes: drag to change them'}
+          <button type="button" className={styles.tool} aria-pressed={sizing} title={sizing ? 'Hide sizes' : 'Show sizes'}
             onClick={() => store.toggleSizing()}>
             <Icon name="ruler" />
             <span aria-hidden>Sizing</span>
@@ -297,9 +297,9 @@ function EditorCanvas({ canvas, phone }: { canvas: React.RefObject<ChartCanvasHa
     const project = store.project
     const grid = store.chart()
     const band = store.selectedBand()
-    // Moving a layer, only the floats it makes; otherwise every long float.
-    const caused = state.arranging ? store.causedIssues() : null
-    const issues = caused ?? store.issues()
+    // Long floats only while the Floats view is on: moving a layer, only the ones it makes; otherwise every one.
+    const caused = state.showingFloats && state.arranging ? store.causedIssues() : null
+    const issues = state.showingFloats ? (caused ?? store.issues()) : []
     return {
       grid,
       colors: project.yarns.map((y) => y.hex),
@@ -374,7 +374,7 @@ function EditorCanvas({ canvas, phone }: { canvas: React.RefObject<ChartCanvasHa
   }, [store])
   // Pointing at a problem row's mark in the margin draws its floats out.
   const onMarginHover = useCallback((row: number | null) => {
-    const marked = row !== null && store.issues().some((i) => i.y === row)
+    const marked = row !== null && store.getState().showingFloats && store.issues().some((i) => i.y === row)
     store.peekAtRow(marked ? row : null)
     return marked
   }, [store])
@@ -512,6 +512,8 @@ function floatLength(cm: number, units: 'cm' | 'in'): string {
 const selectIssueRow = (s: EditorState) => s.issueRow
 const selectChart = (_: EditorState, store: EditorStore) => store.chart()
 const selectIssues = (_: EditorState, store: EditorStore) => store.issues()
+const selectShowingFloats = (s: EditorState) => s.showingFloats
+const NO_ISSUES: readonly RowIssue[] = []
 
 const selectStitchesGrid = (_: EditorState, store: EditorStore) => store.stitches()
 
@@ -520,7 +522,10 @@ function StatusBar() {
   const hover = useEditor(selectHover)
   const issueRow = useEditor(selectIssueRow)
   const grid = useEditor(selectChart)
-  const issues = useEditor(selectIssues)
+  // A row's long floats are said only while the Floats view is on.
+  const showingFloats = useEditor(selectShowingFloats)
+  const allIssues = useEditor(selectIssues)
+  const issues = showingFloats ? allIssues : NO_ISSUES
   const cell = hover ? grid.cells[hover.y * grid.width + hover.x] : undefined
   // The stitch pointed at, when it's more than plain knit: "k1 tbl", "M1L".
   const stitches = useEditor(selectStitchesGrid)
@@ -534,9 +539,11 @@ function StatusBar() {
   // Only stitches of the piece are described: off it, the chart's size shows instead.
   if (hover && cell !== undefined && cell !== NONE) {
     const problem = rowProblem(hover.y)
+    // Counted along its own row, as it's knitted: on a shaped row, "of" how many it has.
+    const onRow = stitchOnRow(grid, hover.y, hover.x)
     info = (
       <>
-        Row {rowNumber(hover.y, grid.height)}, stitch {stitchNumber(hover.x, grid.width)}
+        Row {rowNumber(hover.y, grid.height)}, stitch {onRow ? `${onRow.stitch}${onRow.of < grid.width ? ` of ${onRow.of}` : ''}` : ''}
         {yarn && <> · {yarn.name}</>}
         {stitchHere !== null && <> · {stitchType(stitchHere).rs || stitchType(stitchHere).name}</>}
         {problem && <span className={styles.statusProblem}> · {problem}</span>}

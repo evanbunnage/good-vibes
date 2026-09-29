@@ -1,0 +1,5 @@
+# Only the home page is meant for search: chart and sign-in pages say noindex themselves.
+User-agent: *
+Disallow: /api/
+
+Sitemap: https://skeinfiend.com/sitemap.xml

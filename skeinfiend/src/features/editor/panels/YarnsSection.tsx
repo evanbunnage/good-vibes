@@ -94,7 +94,7 @@ export function YarnsSection() {
                   <span className={styles.yarnName}>
                     {/* A shortcut for the mouse: the yarn's window renames it from the keyboard. */}
                     {/* biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: see above */}
-                    <span title={chosen ? 'Click to rename' : undefined} onClick={(e) => {
+                    <span title={chosen ? 'Rename' : undefined} onClick={(e) => {
                       // Like a file name: click the chosen yarn's name to rename it.
                       if (!chosen || recoloring) return
                       e.stopPropagation()
@@ -108,7 +108,7 @@ export function YarnsSection() {
               )}
               {/* How much it takes: skeins, once the ball band's given. */}
               <span className={styles.yarnAmount}
-                title={needed ? `${amount(needed, units)}: ${Math.round((counts[i]! / total) * 100)}% of the stitches` : 'Not in the chart yet'}>
+                title={needed ? `${amount(needed, units)}: ${Math.round((counts[i]! / total) * 100)}% of the stitches` : 'Not used yet'}>
                 {!needed ? '–' : needed.skeins !== null ? `${needed.skeins} ${needed.skeins === 1 ? 'skein' : 'skeins'}` : formatYarnLength(needed.meters, units)}
               </span>
               <button type="button" className={ui.button} data-variant="ghost" data-size="icon" aria-pressed={open} data-open={open || undefined}

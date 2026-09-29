@@ -97,18 +97,40 @@ type Gesture =
  * its rows, or change the gap between repeats). Stitches are drawn in the
  * motif window, on the selected layer's motif.
  */
+/** A cache of the last few things asked about (a chart and its preview, say): older ones are let go. */
+class Recent<K, V> {
+  private readonly entries = new Map<K, V>()
+  constructor(private readonly size = 6) {}
+  get(key: K): V | undefined {
+    const value = this.entries.get(key)
+    if (value !== undefined) {
+      // The most recently used last, so the least recently used is first to go.
+      this.entries.delete(key)
+      this.entries.set(key, value)
+    }
+    return value
+  }
+  set(key: K, value: V): void {
+    this.entries.delete(key)
+    this.entries.set(key, value)
+    if (this.entries.size > this.size) this.entries.delete(this.entries.keys().next().value as K)
+  }
+}
+
 export class EditorStore {
   private state: EditorState
   private readonly listeners = new Set<Listener>()
   private gesture: Gesture | null = null
-  private readonly composed = new WeakMap<Project, Grid>()
-  private readonly knitted = new WeakMap<Project, Grid>()
-  private readonly purled = new WeakMap<Project, { all: Grid | null; knitted: Grid | null }>()
-  private readonly otherSizes = new WeakMap<Project, SizeFloats[]>()
-  private readonly shownIssues = new WeakMap<Project, RowIssue[]>()
-  private readonly analyzed = new WeakMap<Grid, RowIssue[]>()
-  private readonly allFloats = new WeakMap<Grid, FloatIssue[]>()
-  private readonly estimates = new WeakMap<Project, ChartEstimate>()
+  // What's worked out from a version of the chart, for the last few versions only: the undo history keeps every
+  // version alive, and on a big chart what's worked out from each is megabytes. Only the latest few are drawn.
+  private readonly composed = new Recent<Project, Grid>()
+  private readonly knitted = new Recent<Project, Grid>()
+  private readonly purled = new Recent<Project, { all: Grid | null; knitted: Grid | null }>()
+  private readonly otherSizes = new Recent<Project, SizeFloats[]>()
+  private readonly shownIssues = new Recent<Project, RowIssue[]>()
+  private readonly analyzed = new Recent<Grid, RowIssue[]>()
+  private readonly allFloats = new Recent<Grid, FloatIssue[]>()
+  private readonly estimates = new Recent<Project, ChartEstimate>()
   /** While arranging a layer: the long floats there were without it, to tell the ones it makes. */
   private baseline: Set<string> | null = null
   /** The rows on screen, so new things land where you're looking. */
@@ -192,7 +214,7 @@ export class EditorStore {
   estimate(project = this.project): ChartEstimate {
     let estimate = this.estimates.get(project)
     if (!estimate) {
-      estimate = estimateYarn(this.knittedChart(project), this.stitches(project, { knitted: true }), this.floats(project), project.yarns, project.gauge, project.swatch)
+      estimate = estimateYarn(this.knittedChart(project), this.stitches(project, { knitted: true }), this.floats(project), project.yarns, project.gauge, project.swatch, this.chart(project))
       this.estimates.set(project, estimate)
     }
     return estimate

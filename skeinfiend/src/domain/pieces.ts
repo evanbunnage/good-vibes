@@ -37,6 +37,14 @@ export interface Measurement {
    * off: dividing for the sleeves of a sweater knit from the top down.
    */
   readonly hold?: boolean
+  /**
+   * Worked in the round, the shaping up to here is made at this many points
+   * spread around, a stitch at each: a crown's "k2tog at each of 8 markers",
+   * charted as wedges. Unset, a few stitches a round are shaped in a pair
+   * where the round begins (as a sleeve is), and more are spread around at
+   * as few points as keep it to one a round.
+   */
+  readonly sections?: number
 }
 
 /**
@@ -139,6 +147,12 @@ export interface PlacedMeasurement {
   readonly measurement: Measurement
   readonly row: number
   readonly stitches: number
+  /**
+   * The points the shaping up to here is made at, worked in the round, a
+   * stitch at each; null when it's made in a pair at the edges (where the
+   * round begins and ends), or cast on or off at once.
+   */
+  readonly sections: number | null
 }
 
 export interface SchematicLayout {
@@ -172,11 +186,12 @@ export function layoutSchematic(piece: SchematicPiece, gauge: Gauge, constructio
   const rows = rowsForCm(top, gauge)
   const rowAt = (cm: number) => Math.min(rows - 1, Math.max(0, Math.round(cm * rowsPerCm(gauge))))
   const multiple = Math.max(1, Math.round(piece.multiple))
-  const placed = sorted.map((m) => ({
+  const counted = sorted.map((m) => ({
     measurement: m,
     row: rowAt(m.height),
     stitches: m.width > 0 ? Math.max(multiple, Math.round(stitchesForCm(m.width, gauge) / multiple) * multiple) : 0,
   }))
+  const placed: PlacedMeasurement[] = counted.map((to, i) => ({ ...to, sections: construction === 'round' && i > 0 ? sectionsFor(counted[i - 1]!, to) : null }))
 
   const stitchesOnRow = (row: number): number => (construction === 'flat' && row % 2 === 1 ? stitchesBetween(row - 1) : stitchesBetween(row))
   const stitchesBetween = (row: number): number => {
@@ -190,27 +205,100 @@ export function layoutSchematic(piece: SchematicPiece, gauge: Gauge, constructio
     // Shaped in pairs, a stitch at each end of the same row, as patterns shape: "increase 1 st each end".
     // An odd stitch over, if there is one, is made on the measurement's own row.
     const change = to.stitches - from.stitches
+    // Shaped at points around: a stitch at each, every so many rounds. Any over is made on the measurement's own round.
+    if (to.sections) {
+      const times = Math.trunc(change / to.sections)
+      return from.stitches + to.sections * Math.round((times * (row - from.row)) / (to.row - from.row))
+    }
     const pairs = Math.trunc(change / 2)
     return from.stitches + 2 * Math.round((pairs * (row - from.row)) / (to.row - from.row))
   }
-
+  /** The points around the change from the row below to this one is made at, if it's shaped so. */
+  const sectionsInto = (row: number): number | null => placed.find((p, i) => i > 0 && placed[i - 1]!.row < row && row <= p.row)?.sections ?? null
   const width = Math.max(1, ...placed.map((p) => p.stitches))
   const outline = createGrid(width, rows, NONE)
-  const rowStitches: number[] = []
+  const rowStitches = Array.from({ length: rows }, (_, row) => stitchesOnRow(row))
+  const across = placeStitches(rowStitches, width, sectionsInto)
   const cmAcross = 1 / stitchesPerCm(gauge)
   const cmUp = 1 / rowsPerCm(gauge)
   for (let row = 0; row < rows; row++) {
     const y = rows - 1 - row
-    const stitches = stitchesOnRow(row)
-    rowStitches.push(stitches)
-    const left = Math.floor((width - stitches) / 2)
     const up = (row + 0.5) * cmUp
-    for (let x = left; x < left + stitches; x++) {
-      const across = (x + 0.5 - width / 2) * cmAcross
-      if (!piece.openings.some((o) => inOpening(o, across, up))) outline.cells[y * width + x] = STITCH
+    for (const x of across[row]!) {
+      const at = (x + 0.5 - width / 2) * cmAcross
+      if (!piece.openings.some((o) => inOpening(o, at, up))) outline.cells[y * width + x] = STITCH
     }
   }
   return { outline, rowAt, placed, rowStitches }
+}
+
+/**
+ * How many points shaping between two measurements is made at, worked in the
+ * round: as the upper one says, or null (a pair at the edges, where the
+ * round begins) for up to two stitches a round, or else as few points as keep
+ * it to a stitch at each a round, dividing both counts evenly if a few more
+ * can: 8 for a crown from 144 stitches.
+ */
+function sectionsFor(from: { row: number; stitches: number }, to: { row: number; stitches: number; measurement: Measurement }): number | null {
+  const change = Math.abs(to.stitches - from.stitches)
+  if (!change || to.row === from.row || to.measurement.hold) return null
+  if (to.measurement.sections) return Math.max(1, Math.min(change, Math.round(to.measurement.sections)))
+  const rounds = to.row - from.row
+  if (change <= 2 * rounds) return null
+  // As patterns work them: all in one round, or up to 8 every other round (raglans, crowns), or the same every round.
+  if (rounds === 1) return change
+  const other = Math.floor(rounds / 2)
+  if (change % other === 0 && change / other <= 8) return change / other
+  if (change % rounds === 0) return change / rounds
+  const fewest = Math.ceil(change / rounds)
+  for (let n = fewest; n <= Math.min(change, fewest * 2); n++) if (from.stitches % n === 0 && to.stitches % n === 0) return n
+  return fewest
+}
+
+/**
+ * Where each row's stitches sit across the chart. Shaped at the edges, a row
+ * is centered. Shaped at points around, stitches stay in their columns, as
+ * they're knitted: from the widest round, the stitches are split into as many
+ * sections, and each shaping takes a stitch from the left end of each (where
+ * it's knitted last: "k to 2 sts before the marker, k2tog"), or, going up to
+ * it, adds one there. The chart shows wedges, as crown charts do.
+ */
+function placeStitches(counts: readonly number[], width: number, sectionsInto: (row: number) => number | null): number[][] {
+  const centered = (n: number) => Array.from({ length: n }, (_, i) => Math.floor((width - n) / 2) + n - 1 - i)
+  const placed: number[][] = []
+  let start = 0
+  for (let row = 1; row <= counts.length; row++) {
+    // A stretch of rows whose changes are all made at points around: laid out together, out from its widest.
+    if (row < counts.length && (counts[row] === counts[row - 1] || sectionsInto(row))) continue
+    let widest = start
+    for (let r = start; r < row; r++) if (counts[r]! > counts[widest]!) widest = r
+    placed[widest] = centered(counts[widest]!)
+    let groups: number[][] | null = null
+    const walk = (from: number, to: number, sections: number | null) => {
+      const have = placed[from]!
+      const want = counts[to]!
+      if (want === have.length) placed[to] = have
+      else if (want > have.length || !sections) {
+        // Wider again, away from the widest: centered.
+        placed[to] = centered(want)
+        groups = null
+      } else {
+        // Split into sections, in the order they're knitted, from the right: kept while the shaping keeps its points.
+        if (!groups || groups.length !== sections) {
+          const n = have.length
+          groups = Array.from({ length: sections }, (_, j) => have.slice(Math.floor((j * n) / sections), Math.floor(((j + 1) * n) / sections)))
+        }
+        const fewer = have.length - want
+        groups = groups.map((g, j) => g.slice(0, Math.max(0, g.length - Math.floor(fewer / sections) - (j < fewer % sections ? 1 : 0))))
+        placed[to] = groups.flat()
+      }
+    }
+    for (let r = widest + 1; r < row; r++) walk(r - 1, r, sectionsInto(r))
+    groups = null
+    for (let r = widest - 1; r >= start; r--) walk(r + 1, r, sectionsInto(r + 1))
+    start = row
+  }
+  return placed
 }
 
 /** Whether a point (centimeters across from the middle, and up from the cast-on edge) is inside an opening. */
@@ -235,6 +323,8 @@ export interface ShapingStep {
   readonly to: Measurement
   /** Both at the same row: cast on or bound off at once, not shaped over rows. */
   readonly atOnce: boolean
+  /** Worked in the round, the points around it's shaped at, a stitch at each; null for a pair at the edges. */
+  readonly sections: number | null
 }
 
 /** Where the stitch count changes, between each pair of measurements up the piece. */
@@ -253,6 +343,7 @@ export function shapingSteps(layout: SchematicLayout): ShapingStep[] {
       from: from.measurement,
       to: to.measurement,
       atOnce: from.row === to.row,
+      sections: to.sections,
     })
   }
   return steps
@@ -276,32 +367,35 @@ export function describeShaping(step: ShapingStep, construction: Construction): 
   }
   const verb = change < 0 ? 'Decrease' : 'Increase'
   const rows = step.toRow - step.fromRow + 1
+  // As knitters say it: every row, every other row, every 3rd row.
+  const nth = (n: number) => (n === 1 ? `every ${row}` : n === 2 ? `every other ${row}` : `every ${ordinal(n)} ${row}`)
+  const everyOf = (interval: number) => {
+    const [low, high] = [Math.floor(interval), Math.ceil(interval)]
+    return low === high ? nth(low) : low === 1 ? `every ${row} or every other ${row}` : `every ${ordinal(low)} or ${ordinal(high)} ${row}`
+  }
+  if (construction === 'round' && step.sections) {
+    // A crown's (or a yoke's) shaping: a stitch at each of so many points around, as the chart's wedges show it.
+    const points = step.sections
+    const times = Math.floor(count / points)
+    const more = count - times * points
+    const then = more ? `, then ${verb.toLowerCase()} ${stitches(more)} more` : ''
+    if (times === 1 && !more && rows === 1) return `${verb} ${stitches(count)} evenly`
+    const at = points === 1 ? '1 stitch' : `${stitches(points)}, 1 in each of ${points} sections,`
+    return `${verb} ${at} ${everyOf(rows / Math.max(1, times))}, ${times} ${times === 1 ? 'time' : 'times'}${then}`
+  }
   const pairs = Math.floor(count / 2)
-  if (rows === 1) return `${verb} ${stitches(count)} evenly`
-  const each = construction === 'flat' ? '1 stitch at each edge' : '2 stitches'
+  if (rows === 1 && construction === 'flat') return `${verb} ${stitches(count)} evenly`
+  const each = construction === 'flat' ? '1 stitch at each edge' : '1 stitch at each end of the round'
   const extra = count % 2 ? `, then ${change < 0 ? 'decrease' : 'increase'} 1 more` : ''
   if (pairs === 0) return `${verb} 1 stitch`
   if (pairs > rows) {
-    if (construction === 'round') {
-      // Many at a time, as patterns work them: up to 8 every other round (raglans, crowns), or else every round.
-      const other = Math.floor(rows / 2)
-      if (other > 0 && count % other === 0 && count / other <= 8) return `${verb} ${stitches(count / other)} every other round, ${other} ${other === 1 ? 'time' : 'times'}`
-      if (count % rows === 0) return `${verb} ${stitches(count / rows)} every round, ${rows} ${rows === 1 ? 'time' : 'times'}`
-      return `${verb} ${stitches(Math.ceil(count / rows))} evenly every round`
-    }
     // More shaping than rows: the excess is cast on or bound off at once, the rest shaped a pair a row.
     const atOnce = pairs - (rows - 1)
     const start = change < 0 ? 'Bind off' : 'Cast on'
     const then = rows > 1 ? `, then ${verb.toLowerCase()} 1 stitch at each edge every row, ${rows - 1} ${rows - 1 === 1 ? 'time' : 'times'}` : ''
     return `${start} ${stitches(atOnce)} at each edge${then}${extra}`
   }
-  const interval = rows / pairs
-  const low = Math.floor(interval)
-  const high = Math.ceil(interval)
-  // As knitters say it: every row, every other row, every 3rd row.
-  const nth = (n: number) => (n === 1 ? `every ${row}` : n === 2 ? `every other ${row}` : `every ${ordinal(n)} ${row}`)
-  const every = low === high ? nth(low) : low === 1 ? `every ${row} or every other ${row}` : `every ${ordinal(low)} or ${ordinal(high)} ${row}`
-  return `${verb} ${each} ${every}, ${pairs} ${pairs === 1 ? 'time' : 'times'}${extra}`
+  return `${verb} ${each} ${everyOf(rows / pairs)}, ${pairs} ${pairs === 1 ? 'time' : 'times'}${extra}`
 }
 
 function ordinal(n: number): string {
@@ -318,5 +412,22 @@ export function stitchCount(outline: Grid): number {
   let n = 0
   for (const cell of outline.cells) if (cell !== NONE) n++
   return n
+}
+
+/**
+ * The rows each stretch of rib is worked on (a hem, a cuff, a brim), counted
+ * up from the cast-on as a pattern counts them, first and last: what the
+ * written instructions say ("Rnds 1–16: work in K1, P1 rib"), and what's
+ * knitted as k1, p1 there, row by row.
+ */
+export function ribRows(piece: SchematicPiece, gauge: Gauge, construction: Construction): Array<{ id: string; name: string; from: number; to: number }> {
+  const layout = layoutSchematic(piece, gauge, construction)
+  const rows = layout.outline.height
+  return (piece.sections ?? []).map((section) => {
+    const from = layout.rowAt(section.bottom) + 1
+    // Its last row, counted up from the cast-on: not past the top, but reaching it.
+    const to = Math.max(from, Math.min(rows, Math.round((section.bottom + section.height) * rowsPerCm(gauge))))
+    return { id: section.id, name: section.name, from, to }
+  })
 }
 

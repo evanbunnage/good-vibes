@@ -1,5 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query'
-import { projectKeys, projectListQuery } from '@/data/projects'
+import { duplicate, projectKeys, projectListQuery, projectQuery } from '@/data/projects'
 import type { ProjectRepository } from '@/data/repository'
 import { createExampleProject } from '@/domain/example'
 import { uniqueName } from '@/domain/names'
@@ -26,6 +26,18 @@ export function appTools({ repository, queryClient, open, openId }: {
   openId: string | null
 }): AgentTool[] {
   const charts = () => queryClient.fetchQuery(projectListQuery(repository))
+  /** A chart by id, or by name if only one has it. */
+  const find = async (ref: unknown) => {
+    if (typeof ref !== 'string' || !ref.trim()) return { problem: problem('Give `chart`: the chart’s name or id (see list-charts).') }
+    const wanted = ref.trim()
+    const list = await charts()
+    const byId = list.find((c) => c.id === wanted)
+    if (byId) return byId
+    const named = list.filter((c) => c.name.toLowerCase() === wanted.toLowerCase())
+    if (named.length > 1) return { problem: problem(`More than one chart is called "${wanted}": give its id (${named.map((c) => c.id).join(', ')}).`) }
+    if (!named[0]) return { problem: problem(`No chart "${wanted}". The charts are: ${list.map((c) => c.name).join(', ') || 'none yet'}.`) }
+    return named[0]
+  }
   return [
     {
       name: 'list-charts',
@@ -34,7 +46,8 @@ export function appTools({ repository, queryClient, open, openId }: {
       execute: async () => {
         const list = await charts()
         if (!list.length) return text('No charts yet: start one with new-chart.')
-        return text(list.map((c) => `${c.name}${c.id === openId ? ' (open)' : ''}: edited ${dateFormat.format(c.updatedAt)}`).join('\n'))
+        // With its id: two charts can share a name, and open-chart takes either.
+        return text(list.map((c) => `${c.name}${c.id === openId ? ' (open)' : ''}: edited ${dateFormat.format(c.updatedAt)} (id ${c.id})`).join('\n'))
       },
     },
     {
@@ -51,27 +64,50 @@ export function appTools({ repository, queryClient, open, openId }: {
         const id = crypto.randomUUID()
         const now = Date.now()
         const made = example === true ? createExampleProject(id, now) : createProject({ id, name: 'New chart', now })
-        const asked = typeof name === 'string' && name.trim() ? name.trim() : made.name
+        if (typeof name === 'string' && !name.trim()) return problem('A chart needs a name: leave `name` out for "New chart".')
+        const asked = typeof name === 'string' ? name.trim() : made.name
         // Under a name no other chart has, as the knitter's own are.
         const project = { ...made, name: uniqueName(asked, (await charts()).map((c) => c.name), 'New chart') }
         await repository.put(project)
         queryClient.setQueryData(projectKeys.detail(id), project)
         await queryClient.invalidateQueries({ queryKey: projectKeys.list() })
         await open(id)
-        return text(`Started "${project.name}" and opened it: its tools (get-chart and the rest) are offered now.`)
+        return text(`Started "${project.name}" and opened it: its tools (get-chart and the rest) are offered now. Every change is saved as it's made: to the knitter's account if they're signed in, otherwise in this browser.`)
       },
     },
     {
       name: 'open-chart',
-      description: 'Opens one of the knitter’s charts, by name, to work on it.',
-      inputSchema: { type: 'object', properties: { chart: { type: 'string', description: 'Its name (see list-charts).' } }, required: ['chart'] },
+      description: 'Opens one of the knitter’s charts, by name or id, to work on it.',
+      inputSchema: { type: 'object', properties: { chart: { type: 'string', description: 'Its name or id (see list-charts).' } }, required: ['chart'] },
       execute: async ({ chart }) => {
-        const name = String(chart ?? '').trim().toLowerCase()
-        const list = await charts()
-        const found = list.find((c) => c.id === name) ?? list.find((c) => c.name.toLowerCase() === name)
-        if (!found) return problem(`No chart "${chart}". The charts are: ${list.map((c) => c.name).join(', ') || 'none yet'}.`)
+        const found = await find(chart)
+        if ('problem' in found) return found.problem
         await open(found.id)
         return text(`Opened "${found.name}": its tools (get-chart and the rest) are offered now.`)
+      },
+    },
+    {
+      name: 'duplicate-chart',
+      description: 'Copies one of the knitter’s charts (to try a variation, or keep the original as it is) and opens the copy.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          chart: { type: 'string', description: 'The chart to copy: its name or id (see list-charts). Default: the one open.' },
+          name: { type: 'string', description: 'What to call the copy. Default: "… copy".' },
+        },
+      },
+      execute: async ({ chart, name }) => {
+        const found = await find(chart ?? openId ?? '')
+        if ('problem' in found) return found.problem
+        const source = await queryClient.fetchQuery(projectQuery(repository, found.id))
+        if (typeof name === 'string' && !name.trim()) return problem('A chart needs a name: leave `name` out for "… copy".')
+        const copy = duplicate(source, crypto.randomUUID(), Date.now())
+        const project = { ...copy, name: uniqueName(typeof name === 'string' ? name.trim() : copy.name, (await charts()).map((c) => c.name), 'New chart') }
+        await repository.put(project)
+        queryClient.setQueryData(projectKeys.detail(project.id), project)
+        await queryClient.invalidateQueries({ queryKey: projectKeys.list() })
+        await open(project.id)
+        return text(`Copied "${source.name}" to "${project.name}" and opened the copy. The original is as it was.`)
       },
     },
   ]

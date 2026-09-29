@@ -1,11 +1,11 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { useQueryClient } from '@tanstack/react-query'
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { createRootRouteWithContext, Outlet, redirect, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useRepository } from '@/data/projects'
 import { appTools } from '@/features/agent/app-tools'
 import { useAgentTools } from '@/features/agent/use-agent-tools'
-import { currentUser, declinedSignIn, isReturning, markReturning } from '@/data/auth'
+import { currentUser, declineSignIn, declinedSignIn, isReturning, markReturning } from '@/data/auth'
 import type { AccountRepository } from '@/data/account-repository'
 import { describeError, Problem } from '@/ui/Problem'
 
@@ -22,6 +22,8 @@ export const Route = createRootRouteWithContext<RouterContext>()({
     // Charts from the account, or from this browser: whatever was cached from the other is dropped.
     // Signing in moves what was made here while signed out into the account.
     if (await context.repository.use(Boolean(user))) context.queryClient.removeQueries()
+    // An agent sent to try it out (`/try`, or `?demo`) isn't stopped at the sign-in page: it works signed out, in this browser.
+    if (!user && ('demo' in location.search || location.pathname === '/try')) declineSignIn()
     if (user) {
       markReturning()
     } else if (isReturning() && !declinedSignIn() && !['/sign-in', '/reset-password'].includes(location.pathname)) {
@@ -47,5 +49,14 @@ function Root() {
     openId,
   }), [repository, queryClient, navigate, openId])
   useAgentTools(tools)
+  // Only the home page is for search engines: a chart is someone's own, and sign-in is just a form.
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  useEffect(() => {
+    let robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]')
+    if (pathname === '/') return robots?.remove()
+    robots ??= Object.assign(document.createElement('meta'), { name: 'robots' })
+    robots.content = 'noindex'
+    document.head.append(robots)
+  }, [pathname])
   return <Outlet />
 }

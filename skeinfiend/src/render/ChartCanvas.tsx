@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, type Ref } from 'react'
-import type { Grid } from '@/domain/grid'
+import { NONE, type Grid } from '@/domain/grid'
 import { drawChart, readTheme, type ChartDrawing, type Theme, type View } from './draw-chart'
 import styles from './ChartCanvas.module.css'
 
@@ -281,16 +281,28 @@ export function ChartCanvas(props: ChartCanvasProps) {
     return () => media.removeEventListener('change', onChange)
   }, [draw])
 
-  // Keep the knitting row in view.
+  // Keep the knitting row in view: up and down, and across too when the chart's wider than the view (a crown
+  // round's last few stitches, say), from the row's right end, where it begins.
   useEffect(() => {
     if (focusRow == null) return
     const v = view.current
-    const { height } = size()
+    const { width, height } = size()
+    const { grid } = callbacks.current.getDrawing()
+    let next = v
     const rowTop = v.originY + focusRow * v.cellHeight
-    if (rowTop < GUTTER.top || rowTop + v.cellHeight > height - GUTTER.bottom) {
-      setView({ ...v, originY: height / 2 - (focusRow + 0.5) * v.cellHeight })
-    } else draw()
-  }, [focusRow, draw, setView, size])
+    if (rowTop < GUTTER.top || rowTop + v.cellHeight > height - GUTTER.bottom) next = { ...next, originY: height / 2 - (focusRow + 0.5) * v.cellHeight }
+    let [left, right] = [-1, -1]
+    for (let x = 0; x < grid.width; x++) {
+      if (grid.cells[focusRow * grid.width + x] === NONE) continue
+      if (left < 0) left = x
+      right = x
+    }
+    const gutter = { ...GUTTER, ...margins }
+    const shown = (x: number) => v.originX + x * v.cellWidth >= gutter.left - 0.5 && v.originX + (x + 1) * v.cellWidth <= width - gutter.right + 0.5
+    if (right >= 0 && !shown(right) && !shown(left)) next = { ...next, originX: width - gutter.right - (right + 1) * v.cellWidth }
+    if (next !== v) setView(bounded(next))
+    else draw()
+  }, [focusRow, draw, setView, size, bounded, margins])
 
   usePointerInput({ canvasRef, view, callbacks, interactive, zoomAt, setView: moveView, pointerAt })
 

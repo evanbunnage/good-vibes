@@ -2,34 +2,42 @@ import { Link } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { analyzeRow } from '@/domain/floats'
 import { cellAspect } from '@/domain/gauge'
-import { NONE } from '@/domain/grid'
-import { isRightSide, rowNumber, stitchNumber } from '@/domain/numbering'
+import { NONE, type Grid } from '@/domain/grid'
+import { isRightSide, rowNumber, stitchOnRow } from '@/domain/numbering'
 import { constructionOf, projectRowsWorked } from '@/domain/instructions'
 import { yarnCounts } from '@/domain/palette'
 import { KNIT, NO_STITCH, stitchType } from '@/domain/stitches'
 import { floatRulesOf, floatsDismissed, stitchedOn as findStitchedOn, type StitchedOn } from '@/domain/project'
 import { writeRow, yarnLabels } from '@/domain/written'
-import type { EditorState, EditorStore } from '@/editor/store'
-import { useEditor, useEditorStore, useProject } from '@/features/editor/editor-context'
+import { useEditorStore, useProject } from '@/features/editor/editor-context'
 import { ChartCanvas, isTyping } from '@/render/ChartCanvas'
 import { Icon } from '@/ui/Icon'
 import { createPreference } from '@/ui/preference'
 import ui from '@/ui/ui.module.css'
 import styles from './knit.module.css'
+import { sizeIndex, switchSize } from '@/domain/edits'
 import { useProgress } from './progress'
 
 
-// What's knitted: motifs stitched on afterwards aren't in the rows.
-const selectChart = (_: EditorState, store: EditorStore) => store.knittedChart()
-const selectPurls = (_: EditorState, store: EditorStore) => store.stitches(store.project, { knitted: true })
+/**
+ * The size each chart is knitted in, remembered in this browser, by its name:
+ * the knitter's, like their row, so the design can show another size (an
+ * agent trying the colorwork on each, say) without it changing here.
+ */
+const knitSizes = createPreference<Record<string, string>>('skeinfiend.knitSizes', {})
 
 /** Row-by-row knitting from the chart: one row highlighted, spelled out, and remembered. */
 export function KnitPage() {
   const store = useEditorStore()
-  const project = useProject()
-  const chart = useEditor(selectChart)
+  const design = useProject()
+  // The size being knitted: the knitter's pick, or until they pick, the one the design shows.
+  const picked = knitSizes.use()[design.id]
+  const pickedIndex = design.sizes?.findIndex((s) => s.name === picked) ?? -1
+  const project = useMemo(() => (pickedIndex >= 0 ? switchSize(design, pickedIndex) : design), [design, pickedIndex])
+  // What's knitted: motifs stitched on afterwards aren't in the rows.
+  const chart = useMemo(() => store.knittedChart(project), [store, project])
   // The knitter's row: theirs, kept apart from the chart.
-  const [y, setY] = useProgress(project.id, chart.height)
+  const [y, setY, done, finish] = useProgress(project.id, chart.height)
   const row = rowNumber(y, chart.height)
   const total = chart.height
   // A piece can start in the round and turn flat partway: each row is worked one way or the other.
@@ -38,7 +46,7 @@ export function KnitPage() {
   const construction = constructionOf(worked)
   const firstFlatRow = worked.since
   const rightSide = isRightSide(row, construction, firstFlatRow)
-  const purls = useEditor(selectPurls)
+  const purls = useMemo(() => store.stitches(project, { knitted: true }), [store, project])
   // MC, CC1… as the printed key names them.
   const labels = useMemo(() => yarnLabels(yarnCounts(chart, project.yarns.length), project.background), [chart, project.yarns.length, project.background])
   const written = useMemo(() => writeRow(chart, y, construction, firstFlatRow, purls, labels, project.background), [chart, y, construction, firstFlatRow, purls, labels, project.background])
@@ -54,6 +62,8 @@ export function KnitPage() {
   const stitchedOn = useMemo(() => findStitchedOn(project), [project])
   const here = stitchedOn.motifs.filter((m) => y >= m.top && y <= m.bottom)
   const [finished, setFinished] = useState(false)
+  // The round a tap on the chart jumped from, to go back to.
+  const [jumpedFrom, setJumpedFrom] = useState<number | null>(null)
   const [focused, setFocused] = useState<number | null>(null)
   const lastRow = y <= 0
   const focus = finished && focused != null ? stitchedOn.motifs[focused] : undefined
@@ -81,6 +91,7 @@ export function KnitPage() {
 
   const go = useCallback((delta: number) => {
     setFinished(false)
+    setJumpedFrom(null)
     setY(y - delta)
   }, [setY, y])
 
@@ -99,9 +110,9 @@ export function KnitPage() {
   }, [go])
 
   const getDrawing = useCallback(() => {
-    const p = store.project
+    const p = project
     return {
-      grid: store.knittedChart(),
+      grid: store.knittedChart(p),
       colors: p.yarns.map((c) => c.hex),
       stitches: store.stitches(p, { knitted: true }),
       numbers: true,
@@ -111,7 +122,7 @@ export function KnitPage() {
       hoverRow: hover && (hover.y !== y || finished) ? hover.y : null,
       stitchedOn: { grid: stitchedOn.grid, places: stitchedOn.motifs, focused: finished ? focused : null },
     }
-  }, [store, stitchedOn, finished, focused, y, hover, hoverText])
+  }, [store, project, stitchedOn, finished, focused, y, hover, hoverText])
 
   return (
     <div className={styles.page}>
@@ -119,7 +130,17 @@ export function KnitPage() {
         <Link to="/p/$projectId" params={{ projectId: project.id }} className={ui.button} data-variant="ghost">
           <Icon name="back" /> Edit
         </Link>
+        {/* With several sizes, the one being knitted: the rows and stitches below are its. */}
         <h1 className={styles.title}>{project.name}</h1>
+        {project.sizes && project.sizes.length > 1 && (
+          <label className={styles.size}>
+            <span>Size</span>
+            <select value={sizeIndex(project)} aria-label="Size being knitted"
+              onChange={(e) => knitSizes.set({ ...knitSizes.get(), [design.id]: project.sizes![Number(e.target.value)]!.name })}>
+              {project.sizes.map((s, i) => <option key={s.name} value={i}>{s.name}</option>)}
+            </select>
+          </label>
+        )}
         {/* As a recipe's cook mode: the screen stays on while knitting, unless the knitter turns it off. */}
         <label className={styles.awake}>
           <input type="checkbox" checked={awake} onChange={(e) => keepAwake.set(e.target.checked)} />
@@ -128,7 +149,8 @@ export function KnitPage() {
         {/* As wide as "100% knitted" all along, so Keep screen on beside it stays put. */}
         <span className={styles.progressText}>
           <span aria-hidden className={styles.progressSizer}>100% knitted</span>
-          <span>{Math.round(((total - 1 - y) / Math.max(1, total - 1)) * 100)}% knitted</span>
+          {/* Rows knitted so far, below the one being knitted: the last row counts once it's marked done. */}
+          <span>{done || finished ? 100 : Math.round(((total - 1 - y) / Math.max(1, total)) * 100)}% knitted</span>
         </span>
       </header>
       <progress className={styles.progress} max={total} value={total - y} aria-label="Rows completed" />
@@ -152,6 +174,9 @@ export function KnitPage() {
           readable={8}
           // Any row, a click away: knitters pick up where they are, not only one row on.
           onCellClick={(_x, cellY) => {
+            if (cellY === y) return
+            // One tap jumps there (a stray one too, on a bus): the round it left is a tap away.
+            setJumpedFrom(y)
             setFinished(false)
             setY(cellY)
           }}
@@ -169,22 +194,18 @@ export function KnitPage() {
       </div>
 
       {finished ? (
-        <StitchOnList motifs={stitchedOn.motifs} chartWidth={chart.width} chartHeight={chart.height} focused={focused}
+        <StitchOnList motifs={stitchedOn.motifs} chart={chart} focused={focused}
           onFocus={setFocused} onBack={() => setFinished(false)} />
       ) : (
-        <section className={styles.row} aria-live="polite" aria-label="Current row">
+        <section className={styles.row} aria-label="Current row">
           <div className={styles.rowHeader}>
-            <h2>
+            <h2 aria-live="polite">
               {/* Knitters call a row worked in the round a round, as the written row below does (Rnd). */}
               {construction === 'round' ? 'Round' : 'Row'} {row} <span className={styles.of}>of {total}</span>
             </h2>
             <span className={styles.side}>
-              {construction === 'round'
-                ? 'Knit'
-                : rightSide
-                  ? 'Right side: knit'
-                  : 'Wrong side: purl, left to right'}
-              {' · '}
+              {/* Which side, and which way: the written row says the stitches (rib, purls), not this. */}
+              {construction === 'round' ? '' : rightSide ? 'Right side · ' : 'Wrong side, left to right · '}
               {stitches} stitches
             </span>
           </div>
@@ -220,8 +241,16 @@ export function KnitPage() {
 
           </div>
 
+          {jumpedFrom !== null && (
+            <button type="button" className={styles.backTo} onClick={() => {
+              setY(jumpedFrom)
+              setJumpedFrom(null)
+            }}>
+              Back to {construction === 'round' ? 'round' : 'row'} {rowNumber(jumpedFrom, total)}
+            </button>
+          )}
           <div className={styles.nav}>
-            <button type="button" className={ui.button} onClick={() => go(-1)} disabled={y >= total - 1} aria-label="Previous row">
+            <button type="button" className={ui.button} onClick={() => go(-1)} disabled={y >= total - 1} aria-label={`Previous ${construction === 'round' ? 'round' : 'row'}`}>
               <Icon name="chevronDown" /> Previous
             </button>
             {lastRow && stitchedOn.motifs.length > 0 ? (
@@ -229,7 +258,7 @@ export function KnitPage() {
                 Done knitting <Icon name="chevronUp" />
               </button>
             ) : (
-              <button type="button" className={`${ui.button} ${styles.next}`} data-variant="primary" onClick={() => go(1)} disabled={lastRow}>
+              <button type="button" className={`${ui.button} ${styles.next}`} data-variant="primary" onClick={() => (lastRow ? finish() : go(1))} disabled={lastRow && done}>
                 {lastRow ? 'Finished!' : <>Next {construction === 'round' ? 'round' : 'row'} <Icon name="chevronUp" /></>}
               </button>
             )}
@@ -241,16 +270,23 @@ export function KnitPage() {
 }
 
 /** After the last row: the motifs to stitch on, each with where it goes. */
-function StitchOnList({ motifs, chartWidth, chartHeight, focused, onFocus, onBack }: {
+function StitchOnList({ motifs, chart, focused, onFocus, onBack }: {
   motifs: readonly StitchedOn[]
-  chartWidth: number
-  chartHeight: number
+  chart: Grid
   focused: number | null
   onFocus: (index: number | null) => void
   onBack: () => void
 }) {
-  // Rows count up from the bottom and stitches from the right, as on the chart.
+  // Rows count up from the bottom, and stitches from the right along the motif's first row, as it's knitted.
   const range = (a: number, b: number) => (a === b ? `${a}` : `${Math.min(a, b)}–${Math.max(a, b)}`)
+  const stitches = (m: StitchedOn) => {
+    const across: number[] = []
+    for (let x = m.left; x < m.right; x++) {
+      const at = stitchOnRow(chart, m.bottom, x)
+      if (at) across.push(at.stitch)
+    }
+    return across.length ? range(Math.min(...across), Math.max(...across)) : ''
+  }
   return (
     <section className={styles.row} aria-label="Duplicate stitch">
       <div className={styles.rowHeader}>
@@ -262,9 +298,8 @@ function StitchOnList({ motifs, chartWidth, chartHeight, focused, onFocus, onBac
             <button type="button" aria-pressed={focused === i} onClick={() => onFocus(focused === i ? null : i)}>
               <strong>{m.band.name}</strong>
               <span>
-                Rows {range(rowNumber(m.bottom, chartHeight), rowNumber(m.top, chartHeight))}
-                {' · '}
-                Stitches {range(stitchNumber(m.left, chartWidth), stitchNumber(m.right - 1, chartWidth))}
+                Rows {range(rowNumber(m.bottom, chart.height), rowNumber(m.top, chart.height))}
+                {stitches(m) && <>{' · '}Stitches {stitches(m)}</>}
               </span>
               <span className={styles.show}>{focused === i ? 'Shown' : 'Show'}</span>
             </button>

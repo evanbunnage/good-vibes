@@ -9,8 +9,9 @@ import { LandingPage } from '@/features/landing/LandingPage'
  * or come by the logo: the landing page, to start one or open an example.
  */
 export const Route = createFileRoute('/')({
-  // `?home` (the logo) shows the landing page even to someone with charts.
-  validateSearch: (search: Record<string, unknown>): { home?: boolean } => (search.home ? { home: true } : {}),
+  // `?home` (the logo) shows the landing page even to someone with charts; so does `?demo` (an agent sent here to try it).
+  validateSearch: (search: Record<string, unknown>): { home?: boolean; demo?: boolean } =>
+    'demo' in search ? { home: true, demo: true } : search.home ? { home: true } : {},
   beforeLoad: async ({ context, search }) => {
     const { user } = context as typeof context & { user?: { id: string } | null }
     if (!user || search.home) return

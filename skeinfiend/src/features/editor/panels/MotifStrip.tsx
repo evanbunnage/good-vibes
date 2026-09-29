@@ -75,7 +75,7 @@ export function MotifStrip() {
     </div>
     {overflows && (
       <button type="button" className={styles.stripToggle} aria-expanded={expanded} aria-label={expanded ? 'Show colorwork motifs in a row' : 'Show all colorwork motifs'}
-        title={expanded ? 'Fewer' : 'More'} onClick={() => expandedPreference.set(!expanded)}>
+        title={expanded ? 'Show fewer' : 'Show more'} onClick={() => expandedPreference.set(!expanded)}>
         {!expanded && <span className={styles.stripMore}>+{hidden}</span>}
         <Icon name={expanded ? 'chevronUp' : 'chevronDown'} />
       </button>
@@ -91,7 +91,7 @@ const INK_LIGHT = '#9aa097'
 
 function Tile({ choice, nudge, onLook, onDragStart }: { choice: MotifChoice; nudge: boolean; onLook: () => void; onDragStart: (e: React.DragEvent) => void }) {
   return (
-    <button type="button" className={styles.stripTile} data-nudge={nudge || undefined} title={`${choice.name}: click to look, or drag onto the chart`} aria-label={choice.name} draggable onDragStart={onDragStart} onClick={onLook}>
+    <button type="button" className={styles.stripTile} data-nudge={nudge || undefined} title={choice.name} aria-label={choice.name} draggable onDragStart={onDragStart} onClick={onLook}>
       <MotifArt choice={choice} />
     </button>
   )

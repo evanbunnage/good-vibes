@@ -14,6 +14,22 @@ export function stitchNumber(x: number, width: number): number {
   return width - x
 }
 
+/**
+ * A stitch as a knitter counts it on its own row: stitch 1 is the row's first
+ * from the right, however the row's shaped, so on a crown round of 60 the
+ * last is 60, wherever it sits on the chart. Null off the piece.
+ */
+export function stitchOnRow(outline: Grid, y: number, x: number): { stitch: number; of: number } | null {
+  if (outline.cells[y * outline.width + x] === NONE) return null
+  let [stitch, of] = [0, 0]
+  for (let i = outline.width - 1; i >= 0; i--) {
+    if (outline.cells[y * outline.width + i] === NONE) continue
+    of++
+    if (i >= x) stitch++
+  }
+  return { stitch, of }
+}
+
 export function yForRow(row: number, height: number): number {
   return height - row
 }

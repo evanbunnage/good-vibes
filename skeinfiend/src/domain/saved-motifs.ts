@@ -1,4 +1,5 @@
 import { NONE, type Grid } from './grid'
+import { KNIT } from './stitches'
 import { uniqueName } from './names'
 
 /**
@@ -12,6 +13,12 @@ export interface SavedMotif {
   readonly name: string
   /** `NONE` is transparent, `MAIN` the main color, and 0, 1, … the contrast colors in order. */
   readonly grid: Grid
+  /**
+   * How each stitch is worked (a `StitchType` code: purl, twisted…), the
+   * grid's size, when any isn't knit. Motifs saved before stitches were
+   * kept have none: they're all knit.
+   */
+  readonly stitches?: Grid
   readonly savedAt: number
   /** When it was last edited in the library, if it has been since it was saved. */
   readonly editedAt?: number
@@ -22,11 +29,19 @@ export const editedAt = (motif: SavedMotif): number => motif.editedAt ?? motif.s
 
 export const MAIN = 254
 
-/** A band's motif as slots: its contrast yarns in palette order, and the main color. */
-export function toSavedMotif(motif: Grid, background: number, id: string, name: string, now: number): SavedMotif {
+/** A band's motif as slots (its contrast yarns in palette order, and the main color), with its stitches, if any aren't knit. */
+export function toSavedMotif(motif: Grid, background: number, id: string, name: string, now: number, stitches: Grid | null = null): SavedMotif {
   const contrasts = [...new Set(motif.cells)].filter((c) => c !== NONE && c !== background).sort((a, b) => a - b)
   const slot = (cell: number) => (cell === NONE ? NONE : cell === background ? MAIN : contrasts.indexOf(cell))
-  return { id, name, grid: { ...motif, cells: motif.cells.map(slot) }, savedAt: now }
+  const worked = stitches && stitches.width === motif.width && stitches.height === motif.height && stitches.cells.some((c) => c !== KNIT)
+  return { id, name, grid: { ...motif, cells: motif.cells.map(slot) }, ...(worked && { stitches }), savedAt: now }
+}
+
+/** Whether two saves of a motif are drawn the same: colors and stitches. */
+export function sameDrawing(a: Pick<SavedMotif, 'grid' | 'stitches'>, b: Pick<SavedMotif, 'grid' | 'stitches'>): boolean {
+  const same = (x: Grid | undefined, y: Grid | undefined) =>
+    x === y || (!!x && !!y && x.width === y.width && x.height === y.height && x.cells.every((c, i) => c === y.cells[i]))
+  return same(a.grid, b.grid) && same(a.stitches, b.stitches)
 }
 
 /**

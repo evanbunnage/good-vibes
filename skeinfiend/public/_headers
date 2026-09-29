@@ -4,3 +4,11 @@
   Referrer-Policy: strict-origin-when-cross-origin
   Content-Security-Policy: frame-ancestors 'none'
   Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+# Someone's own chart, and the sign-in forms: not for search engines. (The page says so too, once it runs.)
+/p/*
+  X-Robots-Tag: noindex
+/sign-in
+  X-Robots-Tag: noindex
+/reset-password
+  X-Robots-Tag: noindex

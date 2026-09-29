@@ -41,7 +41,11 @@ function publish(): void {
     tools: [...offered.values()].map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
     call: async (name, input = {}) => {
       const tool = offered.get(name)
-      if (!tool) return { content: [{ type: 'text', text: `No tool "${name}". Tools: ${[...offered.keys()].join(', ')}.` }], isError: true }
+      if (!tool) {
+        // A chart's tools come and go with the chart: with none open, say how to get them.
+        const noChart = !offered.has('get-chart') ? ' No chart is open: open-chart or new-chart opens one, and its tools (get-chart and the rest) are offered then.' : ''
+        return { content: [{ type: 'text', text: `No tool "${name}".${noChart} Tools now: ${[...offered.keys()].join(', ')}.` }], isError: true }
+      }
       return tool.execute(input)
     },
   }

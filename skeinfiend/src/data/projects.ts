@@ -1,5 +1,6 @@
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { createContext, useContext } from 'react'
+import { withCurrentOutline } from '@/domain/edits'
 import { uniqueName } from '@/domain/names'
 import type { Project } from '@/domain/project'
 import { ChartConflictError, ChartGoneError, NotSignedInError } from './remote-repository'
@@ -30,7 +31,7 @@ export function projectQuery(repository: ProjectRepository, id: string) {
     queryFn: async () => {
       const project = await repository.get(id)
       if (!project) throw new ProjectNotFoundError(id)
-      return project
+      return withCurrentOutline(project)
     },
     // Opened from the cache if it was read moments ago (a hover preloads it); otherwise fetched fresh,
     // so the editor starts from the latest. While it's open, the editor's copy is the live one.

@@ -65,6 +65,8 @@ export function useAddLayer() {
     const rows = atRow === undefined ? store.rowsForNewBand(motif.height) : store.rowsAt(atRow, motif.height)
     const band: Band = {
       ...createBand(crypto.randomUUID(), choice.name, motif, rows),
+      // A saved motif's own stitches (purls, twisted stitches) come with it.
+      ...(choice.saved?.stitches && { stitches: choice.saved.stitches }),
       offsetX: centeredOffset(project.outline.width, motif.width, spacing),
       gapX: spacing,
       ...(choice.fromLibrary && { fromLibrary: choice.fromLibrary }),

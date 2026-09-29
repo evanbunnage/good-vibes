@@ -94,7 +94,7 @@ export function LayersSection() {
 >
               <div className={styles.layer} data-grip>
                 {/* Dragged by pointer, not the browser's drag and drop, so a finger can do it as well as a mouse. */}
-                <button type="button" className={styles.grip} aria-label={`Rearrange ${band.name}`} title="Drag to rearrange"
+                <button type="button" className={styles.grip} aria-label={`Rearrange ${band.name}`} title="Drag to reorder"
                   onPointerDown={(e) => {
                     if (e.button !== 0) return
                     e.preventDefault()
@@ -143,7 +143,7 @@ export function LayersSection() {
                 {(() => {
                   const newer = newerVersion(band)
                   return newer && (
-                    <button type="button" className={styles.libraryUpdate} title={`“${newer.name}” has been changed in your colorwork motifs. Take the new version (Undo puts it back).`}
+                    <button type="button" className={styles.libraryUpdate} title={`Update to the new “${newer.name}”`}
                       onClick={() => store.update((p) => takeLibraryVersion(p, band.id, newer))}>
                       Update
                     </button>
@@ -154,7 +154,7 @@ export function LayersSection() {
                     const picked = recoloring?.bandId === band.id && recoloring.yarn === yarn
                     return (
                       <button type="button" key={yarn} className={styles.chipButton} aria-pressed={picked} style={{ background: colors[yarn] }}
-                        aria-label={`Recolor ${project.yarns[yarn]?.name ?? 'color'} in ${band.name}`} title="Recolor: then pick a yarn"
+                        aria-label={`Recolor ${project.yarns[yarn]?.name ?? 'color'} in ${band.name}`} title="Recolor"
                         onClick={() => store.recolor(band.id, yarn)} />
                     )
                   })}

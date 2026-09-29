@@ -47,8 +47,10 @@ export function stitchLengthCm(gauge: Gauge): number {
 /**
  * `chart` as knitted (NONE off the piece), `stitches` for places with no
  * stitch, `floats` every float in it however short (`maxFloat: 0`).
+ * `finished`, the chart once motifs are duplicate stitched on after knitting:
+ * each of those stitches takes about a stitch's worth of its yarn too.
  */
-export function estimateYarn(chart: Grid, stitches: Grid | null, floats: readonly FloatIssue[], yarns: readonly Yarn[], gauge: Gauge, swatch?: Swatch): ChartEstimate {
+export function estimateYarn(chart: Grid, stitches: Grid | null, floats: readonly FloatIssue[], yarns: readonly Yarn[], gauge: Gauge, swatch?: Swatch, finished?: Grid): ChartEstimate {
   const counts = yarns.map(() => 0)
   let knitted = 0
   chart.cells.forEach((cell, i) => {
@@ -56,6 +58,12 @@ export function estimateYarn(chart: Grid, stitches: Grid | null, floats: readonl
     counts[cell]!++
     knitted++
   })
+  // Duplicate stitched over the knitting: more of that yarn, on the same fabric (so not in the swatch's area).
+  if (finished && finished !== chart) {
+    finished.cells.forEach((cell, i) => {
+      if (cell !== NONE && cell !== chart.cells[i] && chart.cells[i] !== NONE && counts[cell] !== undefined) counts[cell]!++
+    })
+  }
   const floatCounts = yarns.map(() => 0)
   for (const f of floats) if (floatCounts[f.yarn] !== undefined) floatCounts[f.yarn]! += f.length
 

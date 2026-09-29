@@ -22,6 +22,11 @@ export interface Band extends Orientation {
   readonly visible: boolean
   /** Rows covered, top-based and inclusive. Null repeats the motif over the whole chart. */
   readonly rows: { readonly top: number; readonly bottom: number } | null
+  /**
+   * Where it was meant to be, in rows up from the cast-on, while a shorter size has it lower (`bottom`, where
+   * it was put then): a size with room puts it back. Forgotten once it's moved by hand.
+   */
+  readonly heldUp?: { readonly up: number; readonly bottom: number }
   /** Horizontal shift of the repeats, in stitches. */
   readonly offsetX: number
   /** Vertical shift, in rows up from the band's bottom row. */
@@ -241,9 +246,10 @@ export function applyBandStitches(target: Grid, mask: Grid, band: Band): void {
       const cell = motifCellAt(band, x, y, target.height, tile)
       if (!cell) continue
       const { width: w, height: h } = band.motif
-      const stitch = band.stitches?.cells[sourceIndex(cell.y, h, motif.height) * w + sourceIndex(cell.x, w, motif.width)] ?? KNIT
-      if (stitch !== KNIT) target.cells[i] = stitch
-      else if (motif.cells[cell.y * motif.width + cell.x] !== NONE) target.cells[i] = KNIT
+      // A layer with stitches of its own (a rib, seed stitch, purl ridges) says what every stitch in it is, clear
+      // ones too; one that's only colors leaves the stitches as they are (over rib, that's corrugated rib).
+      if (!band.stitches) continue
+      target.cells[i] = band.stitches.cells[sourceIndex(cell.y, h, motif.height) * w + sourceIndex(cell.x, w, motif.width)] ?? KNIT
     }
   }
 }
@@ -251,6 +257,11 @@ export function applyBandStitches(target: Grid, mask: Grid, band: Band): void {
 /** Whether a layer works any stitch other than knit. */
 export function hasStitches(band: Pick<Band, 'stitches'>): boolean {
   return band.stitches?.cells.some((c) => c !== KNIT) ?? false
+}
+
+/** A layer's stitches at its scale, like `scaledMotif`, as it's saved to the library. Null when they're all knit. */
+export function scaledStitches(band: Band): Grid | null {
+  return band.stitches && hasStitches(band) ? scaleUp(band.stitches, scaleOf(band)) : null
 }
 
 /** A layer's stitches as knitted, like `bandTile`: scaled up, mirrored, and rotated. Null when they're all knit. */
