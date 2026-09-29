@@ -8,8 +8,8 @@
 export function demoPrompt(origin: string): string {
   return `Help me get started with a Fair Isle hat using SkeinFiend: ${origin}/try. No need to sign in
 
-Chart the triangles (top left) from this 1922 DMC pattern plate, stitch for stitch: ${PLATE}
-Add the heart border (bottom right) from this one above it: ${HEARTS}
+Chart the triangles from this 1922 DMC pattern plate, stitch for stitch: ${PLATE}
+Add the heart border from this one above it: ${HEARTS}
 - Cream with the plates' golds and reds, and fix any floats that are too long
 - Make it in S, M and L, with a crown in 8 sections
 - Save the bands to my motifs so I can reuse them
