@@ -9,6 +9,7 @@ import { lastChart } from '@/data/last-chart'
 import { AccountMenu } from '@/features/editor/AccountMenu'
 import { continuedChart, offerMotifHelper, startedChart } from '@/features/editor/panels/motif-helper-state'
 import { ChartPreview } from '@/render/ChartPreview'
+import { Icon } from '@/ui/Icon'
 import { Logo } from '@/ui/Logo'
 import { usePhone, useTouch } from '@/ui/use-phone'
 import { ClaudeSpark, OpenAIBlossom } from '@/ui/BrandMarks'
@@ -126,6 +127,14 @@ function AgentDemo() {
   const prompt = useMemo(() => demoPrompt(window.location.origin), [])
   // The app it didn't open, if a click seemed to do nothing: the page never lost focus to it.
   const [missing, setMissing] = useState<{ name: string; download: string } | null>(null)
+  // The prompt was just copied, from a button that says so.
+  const [copied, setCopied] = useState(false)
+  const copyPrompt = () => {
+    void navigator.clipboard?.writeText(prompt).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }).catch(() => {})
+  }
   const waiting = useRef<() => void>(undefined)
   useEffect(() => () => waiting.current?.(), [])
   // The note about an app that didn't open is put away by a click elsewhere, or Escape.
@@ -142,16 +151,14 @@ function AgentDemo() {
     }
   }, [missing])
   const marks = { ChatGPT: <OpenAIBlossom />, Claude: <ClaudeSpark /> }
-  // On a phone or tablet the apps can't drive a browser: what there is to try, and where, without buttons that do nothing.
+  // On a phone or tablet the apps can't drive a browser: the prompt to take to a computer, not buttons that do nothing.
   if (phone || touch) {
     return (
       <section className={styles.agentDemo} aria-label="Try a demo with an agent">
         <p className={styles.agentLead}>SkeinFiend is built for agents, too. Try it out on your desktop.</p>
-        <div className={styles.agentButtons} aria-hidden>
-          {demoLinks(prompt).map((link) => (
-            <span key={link.name} className={styles.agentMark}>{marks[link.name as keyof typeof marks]} {link.name}</span>
-          ))}
-        </div>
+        <button type="button" className={`${ui.button} ${styles.agentButton}`} onClick={copyPrompt}>
+          <Icon name={copied ? 'check' : 'copy'} /> {copied ? 'Copied' : 'Copy prompt'}
+        </button>
       </section>
     )
   }
@@ -193,18 +200,24 @@ function AgentDemo() {
                 watchFor(link)
               }}>
               {marks[link.name as keyof typeof marks]} {link.name}
+              {/* Opens outside the browser, as macOS marks such links. */}
+              <span className={styles.agentOpens}><Icon name="external" /></span>
             </a>
             {/* Under the button that didn't open anything: what to do instead. */}
             {missing?.name === link.name && (
               <span className={styles.agentTip} role="status">
                 <strong>Couldn’t Open {missing.name} Desktop</strong>
-                <a href={missing.download} target="_blank" rel="noreferrer">Download {missing.name} Desktop</a>
+                <span>
+                  <a href={missing.download} target="_blank" rel="noreferrer">Download {missing.name} Desktop</a> or{' '}
+                  <button type="button" className={styles.linkButton} onClick={copyPrompt}>
+                    {copied ? 'copied' : 'copy an example prompt'}
+                  </button>
+                </span>
               </span>
             )}
           </span>
         ))}
       </div>
-      <p className={styles.agentNote}>Opens in ChatGPT Desktop or Claude Desktop</p>
     </section>
   )
 }

@@ -268,7 +268,7 @@ function ViewControls({ canvas, phone }: { canvas: React.RefObject<ChartCanvasHa
 }
 
 const selectGauge = (_: EditorState, store: EditorStore) => store.project.gauge
-const selectFitKey = (_: EditorState, store: EditorStore) => `${store.project.outline.width}x${store.project.outline.height}`
+const selectFitKey = (state: EditorState, store: EditorStore) => `${store.project.outline.width}x${store.project.outline.height}:${state.fitRequests}`
 
 function EditorCanvas({ canvas, phone }: { canvas: React.RefObject<ChartCanvasHandle | null>; phone: boolean }) {
   const store = useEditorStore()

@@ -34,6 +34,7 @@ const PATHS = {
   close: 'M6 6l12 12 M18 6L6 18',
   person: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4.5 20a7.5 7.5 0 0 1 15 0',
   copy: 'M9 9h11v11H9z M5 15H4V4h11v1',
+  external: 'M14 4h6v6 M20 4l-9 9 M18 14v6H4V6h6',
   chevronUp: 'M6 15l6-6 6 6',
   chevronDown: 'M6 9l6 6 6-6',
   download: 'M12 4v11 M7 10l5 5 5-5 M5 20h14',

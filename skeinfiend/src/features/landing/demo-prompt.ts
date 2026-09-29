@@ -8,14 +8,14 @@
 export function demoPrompt(origin: string): string {
   return `Help me get started with a Fair Isle hat using SkeinFiend: ${origin}/try. No need to sign in
 
-Chart a band from this 1922 DMC pattern plate, stitch for stitch: ${PLATE}
-Add the hearts from this one above it: ${HEARTS}
+Chart the triangles (top left) from this 1922 DMC pattern plate, stitch for stitch: ${PLATE}
+Add the heart border (bottom right) from this one above it: ${HEARTS}
 - Cream with the plates' golds and reds, and fix any floats that are too long
 - Make it in S, M and L, with a crown in 8 sections
 - Save the bands to my motifs so I can reuse them
 - Tell me how much yarn I'll need
 
-Keep the chart on screen`
+Keep the chart on screen as you work so I can watch`
 }
 
 /**
@@ -26,11 +26,11 @@ Keep the chart on screen`
 const PLATE = 'https://upload.wikimedia.org/wikipedia/commons/e/e2/Motifs_pour_Broderies_-_1re_s%C3%A9rie_-_Planche_01.jpg'
 
 /**
- * Plate 3 of the same book: hearts, crosses and a chevron band, photographed
- * as stitched (not a flat chart like plate 1), so reading it is a harder test.
- * Public domain; Wikimedia Commons.
+ * Plate 5 of the same book: a border of burgundy hearts on cream (bottom
+ * right), photographed as stitched rather than charted like plate 1, so
+ * reading it is a harder test. Public domain; Wikimedia Commons.
  */
-const HEARTS = 'https://upload.wikimedia.org/wikipedia/commons/c/cc/Motifs_pour_Broderies_-_1re_s%C3%A9rie_-_Planche_03.jpg'
+const HEARTS = 'https://upload.wikimedia.org/wikipedia/commons/3/31/Motifs_pour_Broderies_-_1re_s%C3%A9rie_-_Planche_05.jpg'
 
 /**
  * Opens each assistant's desktop app, where its agent can use a browser, with

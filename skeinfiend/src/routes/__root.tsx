@@ -8,6 +8,7 @@ import { useAgentTools } from '@/features/agent/use-agent-tools'
 import { currentUser, declineSignIn, declinedSignIn, isReturning, markReturning } from '@/data/auth'
 import type { AccountRepository } from '@/data/account-repository'
 import { describeError, Problem } from '@/ui/Problem'
+import { agentAtWork } from '@/features/editor/panels/motif-helper-state'
 
 export interface RouterContext {
   readonly queryClient: QueryClient
@@ -23,7 +24,10 @@ export const Route = createRootRouteWithContext<RouterContext>()({
     // Signing in moves what was made here while signed out into the account.
     if (await context.repository.use(Boolean(user))) context.queryClient.removeQueries()
     // An agent sent to try it out (`/try`, or `?demo`) isn't stopped at the sign-in page: it works signed out, in this browser.
-    if (!user && ('demo' in location.search || location.pathname === '/try')) declineSignIn()
+    const demo = 'demo' in location.search || location.pathname === '/try'
+    if (!user && demo) declineSignIn()
+    // Sent by the demo: an agent's at work, so the first-time helper stays out of its way.
+    if (demo) agentAtWork()
     if (user) {
       markReturning()
     } else if (isReturning() && !declinedSignIn() && !['/sign-in', '/reset-password'].includes(location.pathname)) {

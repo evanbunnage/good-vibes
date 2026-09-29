@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { NotSignedInError } from '@/data/remote-repository'
+import { agentAtWork } from '@/features/editor/panels/motif-helper-state'
 import type { AgentTool, ToolResult } from './tools'
 
 /**
@@ -56,6 +57,8 @@ function answering(tool: AgentTool): AgentTool {
   return {
     ...tool,
     execute: async (input) => {
+      // An agent's using SkeinFiend: helpers meant for a person trying it for the first time stay out of its way.
+      agentAtWork()
       try {
         return await tool.execute(input)
       } catch (error) {

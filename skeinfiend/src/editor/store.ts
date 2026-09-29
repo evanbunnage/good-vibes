@@ -52,6 +52,8 @@ export interface EditorState {
   readonly hover: { readonly x: number; readonly y: number } | null
   /** The pointer's exact place over the chart, in stitches and rows from its top-left. */
   readonly pointer: { readonly x: number; readonly y: number } | null
+  /** Counts the times the whole chart's been asked to fit the view (an agent changed it), to refit each time. */
+  readonly fitRequests: number
 }
 
 type Listener = () => void
@@ -154,6 +156,7 @@ export class EditorStore {
       recoloring: null,
       hover: null,
       pointer: null,
+      fitRequests: 0,
     }
   }
 
@@ -401,6 +404,11 @@ export class EditorStore {
   }
 
   /** Shows the back of the fabric (every strand, the long ones picked out), or stops. */
+  /** The whole chart in view again: after an agent's change, so what it did is on screen for the knitter watching. */
+  fitChart(): void {
+    this.set({ fitRequests: this.state.fitRequests + 1 })
+  }
+
   toggleFloats(): void {
     this.set({ showingFloats: !this.state.showingFloats })
   }

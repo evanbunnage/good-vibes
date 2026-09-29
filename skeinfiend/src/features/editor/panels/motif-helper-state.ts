@@ -7,6 +7,8 @@ const done = createPreference<boolean>('skeinfiend.draggedMotif', false)
 
 /** Charts just started that it's shown on, whatever's been done before: for this page only. */
 const offered = new Set<string>()
+/** An agent's at work in this page (sent by the demo, or calling SkeinFiend's tools): the helper would only be in its way, and the knitter's watching. */
+let agentHere = false
 /** Charts gone back to from the home page's "Continue": work under way, so no helper there. For this page only. */
 const continued = new Set<string>()
 /** A motif's been picked up to look at: they've found the motifs, so it's put away for this page. */
@@ -39,6 +41,13 @@ export function startedChart(id: string, { signedIn, otherCharts }: { signedIn: 
 export function continuedChart(id: string): void {
   continued.add(id)
   offered.delete(id)
+  changed()
+}
+
+/** An agent's working here: no helper for the rest of this page. */
+export function agentAtWork(): void {
+  if (agentHere) return
+  agentHere = true
   changed()
 }
 
@@ -75,7 +84,7 @@ export function useMotifHelper(chartId: string): { wanted: boolean; close: () =>
     return () => clearTimeout(timer)
   }, [])
   return {
-    wanted: due && !looked && !continued.has(chartId) && (offered.has(chartId) || (!user && !dismissed)),
+    wanted: due && !looked && !agentHere && !continued.has(chartId) && (offered.has(chartId) || (!user && !dismissed)),
     close: () => {
       done.set(true)
       offered.delete(chartId)

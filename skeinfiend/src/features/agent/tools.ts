@@ -200,7 +200,11 @@ export function agentTools(store: EditorStore, library?: LibraryAccess): AgentTo
         throw new ToolError(`This tool doesn’t take ${unknown.map((k) => `\`${k}\``).join(', ')}: nothing was changed. It takes ${known.length ? known.map((k) => `\`${k}\``).join(', ') : 'nothing'}.`)
       }
       // Checked against the tool's own schema first: a number that isn't one ("ten", NaN) is refused, not stored.
-      return await execute((checkInput(input ?? {}, schema, '') ?? {}) as Record<string, unknown>)
+      const before = store.project
+      const result = await execute((checkInput(input ?? {}, schema, '') ?? {}) as Record<string, unknown>)
+      // The chart changed: all of it back in view, so what was done is on screen for the knitter watching.
+      if (store.project !== before) store.fitChart()
+      return result
     } catch (error) {
       if (!(error instanceof ToolError || error instanceof RangeError)) throw error
       return { ...text(error.message), isError: true }
